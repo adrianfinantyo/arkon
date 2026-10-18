@@ -410,7 +410,7 @@ func TestNoArgsJSON(t *testing.T) {
 }
 
 func TestPlaceholderSubcommands(t *testing.T) {
-	commands := []string{"apply", "status", "sleep", "inhibit"}
+	commands := []string{"apply", "status"}
 
 	for _, cmd := range commands {
 		t.Run(cmd+" text", func(t *testing.T) {
@@ -464,4 +464,325 @@ func TestGlobalConfigInlineFlag(t *testing.T) {
 		t.Fatalf("expected /etc/custom/arkon.yaml, got %q", path)
 	}
 }
+
+func TestInhibitCreateText(t *testing.T) {
+	mem := env.NewMemEnv()
+	mem.EnvVars["USER"] = "alice"
+	runner, stdout, stderr := newTestRunner(mem)
+	runner.StateDir = t.TempDir()
+
+	code := runner.Run(context.Background(), []string{"inhibit", "--reason", "Manual maintenance", "--duration", "3h"})
+	if code != ExitOK {
+		t.Fatalf("expected exit code %d, got %d. stderr: %s", ExitOK, code, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+
+	out := stdout.String()
+	if !strings.Contains(out, "Inhibition Lock Created") {
+		t.Errorf("expected 'Inhibition Lock Created' in output: %s", out)
+	}
+	if !strings.Contains(out, "Manual maintenance") {
+		t.Errorf("expected reason in output: %s", out)
+	}
+	if !strings.Contains(out, "3h") {
+		t.Errorf("expected duration in output: %s", out)
+	}
+}
+
+func TestInhibitCreateJSON(t *testing.T) {
+	mem := env.NewMemEnv()
+	mem.EnvVars["USER"] = "bob"
+	runner, stdout, stderr := newTestRunner(mem)
+	runner.StateDir = t.TempDir()
+
+	code := runner.Run(context.Background(), []string{"inhibit", "--reason", "Backup run", "--duration", "1h", "--json"})
+	if code != ExitOK {
+		t.Fatalf("expected exit code %d, got %d. stderr: %s", ExitOK, code, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+
+	var envelope Envelope
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("failed to parse json envelope: %v", err)
+	}
+	if !envelope.Success {
+		t.Fatal("expected success: true")
+	}
+
+	dataMap, ok := envelope.Data.(map[string]any)
+	if !ok {
+		t.Fatalf("expected map in data, got %T", envelope.Data)
+	}
+	if dataMap["reason"] != "Backup run" {
+		t.Errorf("expected reason 'Backup run', got %v", dataMap["reason"])
+	}
+	if dataMap["created_by"] != "bob" {
+		t.Errorf("expected created_by 'bob', got %v", dataMap["created_by"])
+	}
+	if dataMap["remaining"] != "1h" {
+		t.Errorf("expected remaining '1h', got %v", dataMap["remaining"])
+	}
+	if dataMap["id"] == "" || dataMap["expires_at"] == "" {
+		t.Errorf("expected non-empty id and expires_at, got id=%v expires_at=%v", dataMap["id"], dataMap["expires_at"])
+	}
+}
+
+func TestInhibitListEmptyTextAndJSON(t *testing.T) {
+	mem := env.NewMemEnv()
+	runner, stdout, stderr := newTestRunner(mem)
+	runner.StateDir = t.TempDir()
+
+	// Text mode
+	code := runner.Run(context.Background(), []string{"inhibit", "list"})
+	if code != ExitOK {
+		t.Fatalf("expected exit code %d, got %d", ExitOK, code)
+	}
+	if !strings.Contains(stdout.String(), "None active") {
+		t.Errorf("expected 'None active' in empty list output, got: %s", stdout.String())
+	}
+
+	// JSON mode
+	stdout.Reset()
+	stderr.Reset()
+	code = runner.Run(context.Background(), []string{"inhibit", "list", "--json"})
+	if code != ExitOK {
+		t.Fatalf("expected exit code %d, got %d", ExitOK, code)
+	}
+	var envEmpty Envelope
+	if err := json.Unmarshal(stdout.Bytes(), &envEmpty); err != nil {
+		t.Fatalf("failed to decode json envelope: %v", err)
+	}
+	if !envEmpty.Success {
+		t.Fatal("expected success: true")
+	}
+	locksList, ok := envEmpty.Data.([]any)
+	if !ok {
+		t.Fatalf("expected []any in data, got %T", envEmpty.Data)
+	}
+	if len(locksList) != 0 {
+		t.Errorf("expected 0 locks, got %d", len(locksList))
+	}
+}
+
+func TestInhibitListActive(t *testing.T) {
+	mem := env.NewMemEnv()
+	runner, stdout, stderr := newTestRunner(mem)
+	runner.StateDir = t.TempDir()
+
+	// Create lock
+	runner.Run(context.Background(), []string{"inhibit", "--reason", "Storage rebuild", "--duration", "4h"})
+	stdout.Reset()
+	stderr.Reset()
+
+	// List text
+	code := runner.Run(context.Background(), []string{"inhibit", "list"})
+	if code != ExitOK {
+		t.Fatalf("expected exit code %d, got %d", ExitOK, code)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "Storage rebuild") {
+		t.Errorf("expected lock reason in list output: %s", out)
+	}
+	if !strings.Contains(out, "4h") {
+		t.Errorf("expected remaining duration in list output: %s", out)
+	}
+
+	// List JSON
+	stdout.Reset()
+	stderr.Reset()
+	code = runner.Run(context.Background(), []string{"inhibit", "list", "--json"})
+	if code != ExitOK {
+		t.Fatalf("expected exit code %d, got %d", ExitOK, code)
+	}
+	var envList Envelope
+	if err := json.Unmarshal(stdout.Bytes(), &envList); err != nil {
+		t.Fatalf("failed to parse json envelope: %v", err)
+	}
+	locksList, ok := envList.Data.([]any)
+	if !ok || len(locksList) != 1 {
+		t.Fatalf("expected 1 lock in list, got %v", envList.Data)
+	}
+}
+
+func TestInhibitRelease(t *testing.T) {
+	mem := env.NewMemEnv()
+	runner, stdout, stderr := newTestRunner(mem)
+	runner.StateDir = t.TempDir()
+
+	// Create a lock using JSON to get ID
+	code := runner.Run(context.Background(), []string{"inhibit", "--reason", "Quick test", "--json"})
+	if code != ExitOK {
+		t.Fatalf("expected exit code %d creating lock, got %d", ExitOK, code)
+	}
+	var created Envelope
+	if err := json.Unmarshal(stdout.Bytes(), &created); err != nil {
+		t.Fatalf("failed to parse envelope: %v", err)
+	}
+	dataMap := created.Data.(map[string]any)
+	lockID := dataMap["id"].(string)
+
+	stdout.Reset()
+	stderr.Reset()
+
+	// Release by ID
+	code = runner.Run(context.Background(), []string{"inhibit", "release", lockID})
+	if code != ExitOK {
+		t.Fatalf("expected exit code %d on release, got %d. stderr: %s", ExitOK, code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "released") {
+		t.Errorf("expected 'released' in stdout: %s", stdout.String())
+	}
+
+	// Listing should now be empty
+	stdout.Reset()
+	code = runner.Run(context.Background(), []string{"inhibit", "list", "--json"})
+	var empty Envelope
+	_ = json.Unmarshal(stdout.Bytes(), &empty)
+	locks := empty.Data.([]any)
+	if len(locks) != 0 {
+		t.Errorf("expected 0 locks after release, got %d", len(locks))
+	}
+}
+
+func TestInhibitReleaseErrors(t *testing.T) {
+	mem := env.NewMemEnv()
+	runner, stdout, stderr := newTestRunner(mem)
+	runner.StateDir = t.TempDir()
+
+	// 1. Missing ID text
+	code := runner.Run(context.Background(), []string{"inhibit", "release"})
+	if code != ExitGeneralError {
+		t.Fatalf("expected exit code %d for missing id, got %d", ExitGeneralError, code)
+	}
+	if !strings.Contains(stderr.String(), "required") {
+		t.Errorf("expected 'required' in stderr: %s", stderr.String())
+	}
+
+	// 2. Missing ID JSON
+	stdout.Reset()
+	stderr.Reset()
+	code = runner.Run(context.Background(), []string{"inhibit", "release", "--json"})
+	if code != ExitGeneralError {
+		t.Fatalf("expected exit code %d for missing id, got %d", ExitGeneralError, code)
+	}
+	var envErr Envelope
+	if err := json.Unmarshal(stdout.Bytes(), &envErr); err != nil {
+		t.Fatalf("failed to parse envelope: %v", err)
+	}
+	if envErr.Success || envErr.Error == nil || envErr.Error.Code != "ERR_MISSING_ARGUMENT" {
+		t.Errorf("expected ERR_MISSING_ARGUMENT, got %v", envErr.Error)
+	}
+
+	// 3. Not found text
+	stdout.Reset()
+	stderr.Reset()
+	code = runner.Run(context.Background(), []string{"inhibit", "release", "inh-nonexistent"})
+	if code != ExitGeneralError {
+		t.Fatalf("expected exit code %d for nonexistent lock, got %d", ExitGeneralError, code)
+	}
+	if !strings.Contains(stderr.String(), "not found") {
+		t.Errorf("expected 'not found' in stderr: %s", stderr.String())
+	}
+
+	// 4. Not found JSON
+	stdout.Reset()
+	stderr.Reset()
+	code = runner.Run(context.Background(), []string{"inhibit", "release", "inh-nonexistent", "--json"})
+	if code != ExitGeneralError {
+		t.Fatalf("expected exit code %d for nonexistent lock, got %d", ExitGeneralError, code)
+	}
+	var envNotFound Envelope
+	if err := json.Unmarshal(stdout.Bytes(), &envNotFound); err != nil {
+		t.Fatalf("failed to parse envelope: %v", err)
+	}
+	if envNotFound.Success || envNotFound.Error == nil || envNotFound.Error.Code != "ERR_LOCK_NOT_FOUND" {
+		t.Errorf("expected ERR_LOCK_NOT_FOUND, got %v", envNotFound.Error)
+	}
+}
+
+func TestSleepBlockedByActiveLockExit2(t *testing.T) {
+	mem := env.NewMemEnv()
+	runner, stdout, stderr := newTestRunner(mem)
+	runner.StateDir = t.TempDir()
+
+	// Acquire lock
+	runner.Run(context.Background(), []string{"inhibit", "--reason", "Active upgrade"})
+	stdout.Reset()
+	stderr.Reset()
+
+	// Attempt sleep without force -> should exit 2
+	code := runner.Run(context.Background(), []string{"sleep"})
+	if code != ExitInhibited {
+		t.Fatalf("expected exit code %d (ExitInhibited), got %d", ExitInhibited, code)
+	}
+	if !strings.Contains(stderr.String(), "INHIBITED (code 2)") {
+		t.Errorf("expected INHIBITED in stderr, got: %s", stderr.String())
+	}
+
+	// Attempt sleep with JSON -> should exit 2 with typed error
+	stdout.Reset()
+	stderr.Reset()
+	code = runner.Run(context.Background(), []string{"sleep", "--json"})
+	if code != ExitInhibited {
+		t.Fatalf("expected exit code %d (ExitInhibited), got %d", ExitInhibited, code)
+	}
+	var envInh Envelope
+	if err := json.Unmarshal(stdout.Bytes(), &envInh); err != nil {
+		t.Fatalf("failed to parse envelope: %v", err)
+	}
+	if envInh.Success || envInh.Error == nil || envInh.Error.Code != "ERR_INHIBITED" {
+		t.Errorf("expected ERR_INHIBITED, got %v", envInh.Error)
+	}
+
+	// Attempt sleep with --force -> should override and succeed
+	stdout.Reset()
+	stderr.Reset()
+	code = runner.Run(context.Background(), []string{"sleep", "--force"})
+	if code != ExitOK {
+		t.Fatalf("expected exit code %d with --force, got %d", ExitOK, code)
+	}
+}
+
+func TestSleepBlockedByDaytimeWindowExit2(t *testing.T) {
+	mem := env.NewMemEnv()
+	runner, stdout, stderr := newTestRunner(mem)
+	runner.StateDir = t.TempDir()
+
+	// Attempt sleep with simulated daytime window -> should exit 2
+	code := runner.Run(context.Background(), []string{"sleep", "--simulate-daytime"})
+	if code != ExitInhibited {
+		t.Fatalf("expected exit code %d, got %d", ExitInhibited, code)
+	}
+	if !strings.Contains(stderr.String(), "daytime") {
+		t.Errorf("expected mention of daytime in stderr: %s", stderr.String())
+	}
+
+	// With JSON
+	stdout.Reset()
+	stderr.Reset()
+	code = runner.Run(context.Background(), []string{"sleep", "--simulate-daytime", "--json"})
+	if code != ExitInhibited {
+		t.Fatalf("expected exit code %d, got %d", ExitInhibited, code)
+	}
+	var envDay Envelope
+	if err := json.Unmarshal(stdout.Bytes(), &envDay); err != nil {
+		t.Fatalf("failed to parse envelope: %v", err)
+	}
+	if envDay.Success || envDay.Error == nil || envDay.Error.Code != "ERR_DAYTIME_PROTECTION" {
+		t.Errorf("expected ERR_DAYTIME_PROTECTION, got %v", envDay.Error)
+	}
+
+	// With --force
+	stdout.Reset()
+	stderr.Reset()
+	code = runner.Run(context.Background(), []string{"sleep", "--simulate-daytime", "--force"})
+	if code != ExitOK {
+		t.Fatalf("expected exit code %d with --force, got %d", ExitOK, code)
+	}
+}
+
 
