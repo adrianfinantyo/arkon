@@ -14,7 +14,7 @@ It is built as the infrastructure sibling to [Arkive](https://github.com/adrianf
 
 ## The Problem
 
-Most homelab servers run on modest hardware: refurbished office PCs (e.g. Intel Pentium or Core i3/i5), mini PCs, or repurposed laptops.
+I run several homelab machines, including an older desktop PC (Intel Pentium Dual-Core E5400) with mechanical storage hard drives. Running these machines 24/7 became an issue in practice:
 
 1. **24/7 power is wasteful and noisy:** An idle 45W machine running around the clock consumes ~394 kWh/year. Putting it to sleep from midnight to 07:00 AM saves ~115 kWh/year, eliminates nighttime noise, and reduces wear on mechanical hard drive spindles.
 2. **Standard Linux power tools are blunt instruments:**
@@ -126,7 +126,7 @@ Systemd Units: arkon-sleep.timer (active/waiting)
 ### 4. Take a temporary lock
 
 ```bash
-arkon inhibit --reason "Restic offsite backup" -- timeout 3600 /opt/scripts/backup.sh
+arkon inhibit --reason "Restic offsite backup" --duration 1h
 ```
 
 ---
