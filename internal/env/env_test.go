@@ -123,4 +123,29 @@ func TestMemEnvOperations(t *testing.T) {
 	if mem.SyncCount != 1 {
 		t.Fatalf("expected 1 sync call, got %d", mem.SyncCount)
 	}
+
+	// Verify WriteHandler and ReadHandler customization
+	customIntercepted := false
+	mem.WriteHandler = func(path string, data []byte, perm os.FileMode) error {
+		customIntercepted = true
+		mem.Files[path] = []byte("intercepted:" + string(data))
+		return nil
+	}
+	if err := mem.WriteFile("/custom/file", []byte("payload"), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+	if !customIntercepted {
+		t.Fatal("expected WriteHandler to be called")
+	}
+
+	mem.ReadHandler = func(path string) ([]byte, error) {
+		return []byte("custom-read:" + path), nil
+	}
+	customRead, err := mem.ReadFile("/any/path")
+	if err != nil {
+		t.Fatalf("ReadFile with ReadHandler failed: %v", err)
+	}
+	if string(customRead) != "custom-read:/any/path" {
+		t.Fatalf("unexpected custom read: %q", string(customRead))
+	}
 }
