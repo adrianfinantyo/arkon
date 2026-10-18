@@ -465,3 +465,103 @@ func TestGlobalConfigInlineFlag(t *testing.T) {
 	}
 }
 
+const testValidManifestYAML = `
+version: "1"
+host:
+  timezone: "UTC"
+circadian:
+  sleep_at: "23:00"
+  wake_at: "07:00"
+teardown:
+  profile_order: ["apps"]
+`
+
+const testUnsafeBufferYAML = `
+version: "1"
+host:
+  timezone: "UTC"
+circadian:
+  sleep_at: "23:00"
+  wake_at: "23:01"
+teardown:
+  profile_order: ["apps"]
+`
+
+func TestRunnerConfigValidationFailureExitCode3(t *testing.T) {
+	mem := env.NewMemEnv()
+	_ = mem.WriteFile("/etc/arkon/arkon.yaml", []byte(testUnsafeBufferYAML), 0644)
+
+	runner, stdout, stderr := newTestRunner(mem)
+	code := runner.Run(context.Background(), []string{"apply", "--config", "/etc/arkon/arkon.yaml"})
+
+	if code != ExitValidationFailure {
+		t.Fatalf("expected ExitValidationFailure (3), got %d (stderr: %s)", code, stderr.String())
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("expected empty stdout on text error, got: %s", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "180") {
+		t.Fatalf("expected stderr to mention 180s safety buffer, got: %s", stderr.String())
+	}
+}
+
+func TestRunnerConfigValidationFailureJSON(t *testing.T) {
+	mem := env.NewMemEnv()
+	_ = mem.WriteFile("/etc/arkon/arkon.yaml", []byte(testUnsafeBufferYAML), 0644)
+
+	runner, stdout, stderr := newTestRunner(mem)
+	code := runner.Run(context.Background(), []string{"apply", "--config", "/etc/arkon/arkon.yaml", "--json"})
+
+	if code != ExitValidationFailure {
+		t.Fatalf("expected ExitValidationFailure (3), got %d (stdout: %s)", code, stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+
+	var envelope Envelope
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("failed to parse json envelope: %v (raw: %s)", err, stdout.String())
+	}
+	if envelope.Success {
+		t.Fatal("expected success: false")
+	}
+	if envelope.Error == nil {
+		t.Fatal("expected non-nil error")
+	}
+	if envelope.Error.Code != "ERR_MANIFEST_VALIDATION" {
+		t.Fatalf("expected ERR_MANIFEST_VALIDATION, got %q", envelope.Error.Code)
+	}
+	if !strings.Contains(envelope.Error.Message, "180") {
+		t.Fatalf("expected error message to mention 180s buffer, got: %s", envelope.Error.Message)
+	}
+}
+
+func TestRunnerConfigNotFoundExitCode3(t *testing.T) {
+	mem := env.NewMemEnv()
+	runner, _, stderr := newTestRunner(mem)
+
+	code := runner.Run(context.Background(), []string{"apply", "--config", "/nonexistent.yaml"})
+	if code != ExitValidationFailure {
+		t.Fatalf("expected ExitValidationFailure (3), got %d", code)
+	}
+	if !strings.Contains(stderr.String(), "not found") && !strings.Contains(stderr.String(), "nonexistent") {
+		t.Fatalf("expected error mentioning missing file, got: %s", stderr.String())
+	}
+}
+
+func TestRunnerDiscoveredConfigValidationFailure(t *testing.T) {
+	mem := env.NewMemEnv()
+	_ = mem.WriteFile("./arkon.yaml", []byte(testUnsafeBufferYAML), 0644)
+
+	runner, _, stderr := newTestRunner(mem)
+	code := runner.Run(context.Background(), []string{"apply"})
+
+	if code != ExitValidationFailure {
+		t.Fatalf("expected ExitValidationFailure (3) on discovered invalid config, got %d", code)
+	}
+	if !strings.Contains(stderr.String(), "180") {
+		t.Fatalf("expected stderr to mention 180s buffer, got: %s", stderr.String())
+	}
+}
+

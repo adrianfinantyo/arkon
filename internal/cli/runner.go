@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/adrianfinantyo/arkon/internal/env"
+	"github.com/adrianfinantyo/arkon/internal/manifest"
 )
 
 // VersionInfo contains build-time metadata.
@@ -35,9 +36,8 @@ func NewRunner(env env.HostEnvironment, stdout, stderr io.Writer, version Versio
 	}
 }
 
-// ParseConfigPath scans command arguments for -c or --config flags, defaulting to "./arkon.yaml".
-func (r *Runner) ParseConfigPath(args []string) string {
-	defaultPath := "./arkon.yaml"
+// ParseConfigFlag returns the explicit manifest path passed via -c, --config, or --config=, or empty string.
+func (r *Runner) ParseConfigFlag(args []string) string {
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		if arg == "-c" || arg == "--config" {
@@ -49,7 +49,21 @@ func (r *Runner) ParseConfigPath(args []string) string {
 			return strings.TrimPrefix(arg, "--config=")
 		}
 	}
-	return defaultPath
+	return ""
+}
+
+// ParseConfigPath scans command arguments for -c or --config flags, defaulting to "./arkon.yaml".
+func (r *Runner) ParseConfigPath(args []string) string {
+	if flag := r.ParseConfigFlag(args); flag != "" {
+		return flag
+	}
+	return "./arkon.yaml"
+}
+
+// LoadManifest resolves, parses, and validates the manifest for the runner's environment.
+func (r *Runner) LoadManifest(args []string) (*manifest.Manifest, string, error) {
+	explicitPath := r.ParseConfigFlag(args)
+	return manifest.Load(r.Env, explicitPath)
 }
 
 // Run executes a command based on parsed arguments and returns a standard exit code.
@@ -79,10 +93,61 @@ func (r *Runner) Run(ctx context.Context, args []string) int {
 	case "schema":
 		return r.runSchema(jsonOutput)
 	case "apply", "status", "sleep", "inhibit":
+		if _, _, code := r.loadAndValidateManifest(args, jsonOutput); code != ExitOK {
+			return code
+		}
 		return r.runNotImplemented(subcommand, jsonOutput, subArgs)
 	default:
 		return r.runUnknown(subcommand, jsonOutput)
 	}
+}
+
+func (r *Runner) loadAndValidateManifest(args []string, jsonOutput bool) (*manifest.Manifest, string, int) {
+	explicitConfig := r.ParseConfigFlag(args)
+	if explicitConfig != "" {
+		m, path, err := manifest.Load(r.Env, explicitConfig)
+		if err != nil {
+			return nil, "", r.emitManifestError(err, jsonOutput)
+		}
+		return m, path, ExitOK
+	}
+
+	candidatePath, err := manifest.DiscoverPath(r.Env, "")
+	if err == nil {
+		m, path, err := manifest.Load(r.Env, candidatePath)
+		if err != nil {
+			return nil, "", r.emitManifestError(err, jsonOutput)
+		}
+		return m, path, ExitOK
+	}
+
+	return nil, "", ExitOK
+}
+
+func (r *Runner) emitManifestError(err error, jsonOutput bool) int {
+	if valErr, ok := err.(*manifest.ValidationError); ok {
+		if jsonOutput {
+			_ = WriteJSON(r.Stdout, false, nil, &Error{
+				Code:    "ERR_MANIFEST_VALIDATION",
+				Message: valErr.Error(),
+				Details: valErr,
+			})
+			return ExitValidationFailure
+		}
+		fmt.Fprintf(r.Stderr, "Error: %s\n", valErr.Error())
+		return ExitValidationFailure
+	}
+
+	if jsonOutput {
+		_ = WriteJSON(r.Stdout, false, nil, &Error{
+			Code:    "ERR_MANIFEST_LOAD",
+			Message: err.Error(),
+		})
+		return ExitValidationFailure
+	}
+
+	fmt.Fprintf(r.Stderr, "Error: %s\n", err.Error())
+	return ExitValidationFailure
 }
 
 func (r *Runner) parseArgs(args []string) (jsonOutput bool, helpRequested bool, subcommand string, subArgs []string) {
