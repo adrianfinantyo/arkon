@@ -1,11 +1,11 @@
 # Arkon
 
-A lightweight, single-binary host lifecycle orchestrator and Docker Compose controller designed for low-power servers, homelabs, and edge appliances.
+A lightweight, single-binary host lifecycle orchestrator and workload controller (Docker, Podman, K8s, systemd) designed for low-power servers, homelabs, and edge appliances.
 
 ## Language
 
 **Arkon**:
-The single-binary CLI tool and orchestrator managing host power transitions, systemd units, and Docker Compose profiles.
+The single-binary CLI tool and orchestrator managing host power transitions, systemd units, and pluggable workload profiles.
 _Avoid_: Control plane, management agent, host orchestrator, Aktive
 
 **Circadian Schedule**:

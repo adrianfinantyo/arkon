@@ -6,7 +6,7 @@ Welcome to **Arkon** (`arkon`). This document provides autonomous AI agents with
 
 ## 1. Project Mission & Identity
 
-**Arkon** is an open-source, lightweight single-binary CLI tool and systemd orchestrator designed to parameterize host power lifecycles, manage Docker Compose profile teardowns in dependency order, program hardware RTC wakealarms, isolate degraded hardware disks, and maintain GitOps-driven host systemd units.
+**Arkon** is an open-source, lightweight single-binary CLI tool and systemd orchestrator designed to parameterize host power lifecycles, manage pluggable workload teardowns (Docker Compose, Podman, K8s, systemd) in dependency order, program hardware RTC wakealarms, isolate degraded hardware disks, and maintain GitOps-driven host systemd units.
 
 ---
 

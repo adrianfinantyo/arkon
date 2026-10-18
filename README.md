@@ -1,12 +1,12 @@
 # Arkon
 
-Declarative host power lifecycle and hardware RTC wake orchestrator for Docker Compose homelabs.
+Declarative host power lifecycle and pluggable workload teardown orchestrator for Linux homelabs (Docker, Podman, K8s, systemd).
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Go Version](https://img.shields.io/badge/Go-1.23%2B-00ADD8.svg?logo=go)](go.mod)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20(amd64%20%7C%20arm64)-orange.svg)](docs/)
 
-Arkon bridges the gap between **Docker Compose stack profiles** and **host hardware power management** (ACPI S5, Real-Time Clock wakealarms, systemd units, and disk spindowns).
+Arkon bridges the gap between **homelab workloads (Docker Compose, Podman, K8s/K3s, systemd slices, or custom CLI commands)** and **host hardware power management** (ACPI S5, Real-Time Clock wakealarms, systemd units, and disk spindowns).
 
 It is built as the infrastructure sibling to [Arkive](https://github.com/adrianfinantyo/arkive) (lightweight media archive and file sharing), sharing the same philosophy: **build software that treats older or modest hardware with respect.**
 
@@ -37,14 +37,20 @@ Arkon is a single static Go binary that acts as a **compiler and control CLI**, 
 * Running `arkon apply` compiles that policy directly into native Linux **systemd services and timers**.
 * When idle, Arkon consumes **0 MB of RAM** because systemd (PID 1) already handles execution. Arkon only runs during state transitions.
 
-### 2. Dependency-Ordered Teardown
+### 2. Pluggable Workload Teardown & Buffer Draining
+Workload teardown is decoupled behind the `TeardownProvider` interface to support diverse homelab stacks:
+* **Docker Compose:** Phased profile stops (`workers` -> `web` -> `storage`) without bulky embedded parsers.
+* **Podman Compose:** Identical profile semantics for rootless and daemonless container hosts.
+* **Kubernetes / K3s:** Node cordon and graceful pod draining (`kubectl drain`) before host sleep.
+* **Systemd Targets:** Deactivating specific systemd target slices (`systemctl stop homelab.target`).
+* **Custom Command Hooks:** Arbitrary CLI commands for PM2 processes, raw binaries, or storage scripts.
+
 Before cutting power or entering ACPI S5:
-1. Arkon notifies background workers to drain active tasks (e.g. video transcode or thumbnail generation).
-2. It stops web frontends to reject incoming HTTP uploads.
-3. It stops databases (PostgreSQL, Valkey, SQLite) cleanly so dirty buffers flush to disk.
-4. It calls `sync` and unmounts or isolates spinning drives.
-5. It programs the hardware wake timestamp into `/sys/class/rtc/rtc0/wakealarm`.
-6. Only then does it trigger ACPI poweroff or sleep.
+1. Arkon executes your configured provider to drain background workers and reject incoming traffic.
+2. It stops databases (PostgreSQL, Valkey, SQLite) cleanly so write-ahead logs close.
+3. It invokes `syscall.Sync()` and verifies `/proc/meminfo` dirty pages drain to zero before power drops.
+4. It programs the hardware wake timestamp into `/sys/class/rtc/rtc0/wakealarm`.
+5. Only then does it trigger ACPI poweroff or sleep.
 
 ### 3. Ergonomic Inhibition Locks
 If a long-running backup or photo import is in progress when the shutdown hour arrives:
@@ -73,15 +79,15 @@ circadian:
   wake_at: "07:00"
   days: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
-workloads:
-  compose_file: "/opt/homelab/docker-compose.yml"
-  teardown_order:
-    - profile: "workers"
-      timeout: 30s
-    - profile: "web"
-      timeout: 15s
-    - profile: "storage"
-      timeout: 60s
+teardown:
+  provider: "docker-compose" # enum: docker-compose, podman, command, systemd
+  timeout_seconds: 30
+  compose_stacks:
+    - path: "/opt/homelab"
+  profile_order:
+    - "workers"
+    - "web"
+    - "storage"
 
 inhibition:
   allow_user_locks: true
