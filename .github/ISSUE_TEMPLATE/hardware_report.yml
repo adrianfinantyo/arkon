@@ -1,0 +1,56 @@
+name: Hardware Compatibility Report
+description: Report tested hardware compatibility (ACPI S3/S5 and RTC wakealarm)
+title: "[Hardware]: "
+labels: ["hardware-compatibility"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Hardware compatibility reports help the community verify which motherboards, chipsets, and RTC chips support reliable sleep and wakealarm automation.
+  - type: input
+    id: system_model
+    attributes:
+      label: System / Motherboard Model
+      description: e.g. Dell OptiPlex 7010, Intel NUC 8i5BEH, ASUS Prime B450M-A
+      placeholder: Dell OptiPlex 7010 SFF
+    validations:
+      required: true
+  - type: input
+    id: cpu_model
+    attributes:
+      label: CPU Model
+      description: e.g. Intel Core i5-3470, AMD Ryzen 5 3600, Intel Pentium E5400
+    validations:
+      required: true
+  - type: dropdown
+    id: power_action
+    attributes:
+      label: Tested Power Action
+      description: Which ACPI target state was tested?
+      options:
+        - "poweroff (ACPI S5 - Full Soft Off)"
+        - "suspend (ACPI S3 - Suspend to RAM)"
+        - "hibernate (ACPI S4 - Suspend to Disk)"
+    validations:
+      required: true
+  - type: dropdown
+    id: rtc_wake_status
+    attributes:
+      label: RTC Wakealarm Result
+      description: Did the hardware reliably wake on schedule?
+      options:
+        - "Success (woke up on exact schedule)"
+        - "Partial (woke up but required BIOS setting adjustments)"
+        - "Failed (did not power on)"
+    validations:
+      required: true
+  - type: textarea
+    id: bios_settings
+    attributes:
+      label: Required BIOS / UEFI Settings
+      description: Any specific BIOS toggles required (e.g. "Deep Sleep Control: Disabled", "ACPI Wake: OS Controlled")?
+  - type: textarea
+    id: additional_notes
+    attributes:
+      label: Additional Notes & Quirks
+      description: Any drive spindown, network card WoL, or USB wake details.

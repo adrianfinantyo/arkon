@@ -17,14 +17,15 @@ A complete architectural blueprint and technical specification for **Arkon**, de
 ## Decisions so far
 
 <!-- the index: one line per closed ticket, enough to judge relevance, then zoom the link for the detail the ticket holds -->
+- [[01] Declarative Manifest Schema & Systemd Compiler](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/01-manifest-schema-and-compiler.md): Version 1 manifest schema with modular lifecycle hooks, host power action abstraction, AI schema introspection ('arkon schema'), deterministic '--json' contract, and atomic systemd compiler with verified rollback and 'Persistent=false' timer.
+- [[02] Linux RTC Wake & ACPI S5 Abstraction](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/02-rtc-wake-and-acpi-s5-abstraction.md): Program hardware wakealarm via direct sysfs writes (`/sys/class/rtc/rtc0/wakealarm`) using relative syntax (`+<seconds>`) with pre-clearing write (`0\n`); eliminate `rtcwake` subprocess; handle `/etc/adjtime` clock modes for status inspection.
+- [[03] Profile-Aware Container Teardown Engine](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/03-profile-aware-container-teardown.md): Pluggable 'TeardownProvider' seam (Docker Compose default, Podman, command/PM2), phased sequential profile stopping, residual catch-all, mandatory 'syscall.Sync()' with dirty page drain, and fail-safe abort.
+- [[04] Inhibition Locks & State Management](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/04-inhibition-locks-and-state-management.md): Atomic Root SSD state persistence ('/var/lib/arkon/state.json') guarded by 'flock', auto-expiring timed inhibition locks, daytime operational window protection with explicit violation messages, and exit code 2 machine contract.
+- [[05] CLI Command Surface & Terminal UX](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/05-cli-command-surface-and-terminal-ux.md): Single unified borderless left-rail layout (immune to terminal width/wrapping, zero dual-view bloat), actionable diagnostic error reporting, and deterministic '--json' machine contract.
 
 ## Active tickets
 
-- [[01] Declarative Manifest Schema & Systemd Compiler](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/01-manifest-schema-and-compiler.md): Defining the specification for `arkon.yaml`, schema validation, and the template compiler generating native `/etc/systemd/system/` timer and service units.
-- [[02] Linux RTC Wake & ACPI S5 Abstraction](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/02-rtc-wake-and-acpi-s5-abstraction.md): Native Go kernel interface for `/sys/class/rtc/rtc0/wakealarm` vs `/usr/sbin/rtcwake` execution, local/UTC time conversion, and hardware alarm verification.
-- [[03] Profile-Aware Container Teardown Engine](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/03-profile-aware-container-teardown.md): Docker Compose CLI wrapper vs direct Docker Engine API socket client (`/var/run/docker.sock`), dependency profile stopping, timeouts, and filesystem sync coordination.
-- [[04] Inhibition Locks & State Management](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/04-inhibition-locks-and-state-management.md): Atomic lockfile and JSON state on the Root SSD (`/var/lib/arkon/state.json`) governing `arkon inhibit`, daytime execution locks, and auto-expiring overrides.
-- [[05] CLI Command Surface & Terminal UX](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/05-cli-command-surface-and-terminal-ux.md): Designing command ergonomics, table rendering (`status`), JSON output flags, error semantics, and privilege elevation (`sudo`) handling.
+<!-- none currently open on frontier -->
 
 ## Not yet specified
 

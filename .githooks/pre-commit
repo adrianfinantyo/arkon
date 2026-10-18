@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+set -e
+
+# Pre-commit hook: Run deslop checks against staged changes enforcing .agents/rules/deslop.md
+
+# Allow bypassing via environment variable
+if [ "${SKIP_DESLOP:-0}" = "1" ]; then
+    echo "[git-hook] SKIP_DESLOP is set. Skipping deslop checks."
+    exit 0
+fi
+
+# Locate repo root
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+DESLOP_SCRIPT="$REPO_ROOT/scripts/deslop.py"
+RULES_FILE="$REPO_ROOT/.agents/rules/deslop.md"
+
+if [ ! -f "$DESLOP_SCRIPT" ]; then
+    if [ -f "$REPO_ROOT/.agents/skills/deslop/scripts/deslop.py" ]; then
+        DESLOP_SCRIPT="$REPO_ROOT/.agents/skills/deslop/scripts/deslop.py"
+    else
+        echo "[git-hook] Warning: deslop script not found. Skipping check."
+        exit 0
+    fi
+fi
+
+# Run deslop check on staged changes
+python3 "$DESLOP_SCRIPT" --staged --rules "$RULES_FILE"
+EXIT_CODE=$?
+
+if [ $EXIT_CODE -ne 0 ]; then
+    echo ""
+    echo "[git-hook] ❌ Commit blocked: AI slop detected in staged changes."
+    echo "[git-hook] Please review .agents/rules/deslop.md and fix the issues above."
+    echo "[git-hook] (To bypass this check in an emergency, use 'git commit --no-verify' or 'SKIP_DESLOP=1 git commit')"
+    exit 1
+fi
+
+exit 0

@@ -16,6 +16,10 @@ _Avoid_: Sleep timer, power routine, shutdown cron
 The ordered sequence of operations halting application containers, flushing database caches to disk, and syncing filesystem journals before cutting system power.
 _Avoid_: Shutdown hook, stop sequence, kill script
 
+**Teardown Provider**:
+The pluggable driver interface orchestrating workload stopping across distinct runtime environments (Docker Compose, Podman Compose, or system commands).
+_Avoid_: Container backend, stop plugin, runner
+
 **Wake Alarm**:
 The hardware Real-Time Clock alarm programmed via the Linux RTC subsystem to power on the system from ACPI state S5.
 _Avoid_: Wake timer, BIOS alarm, power-on timer
