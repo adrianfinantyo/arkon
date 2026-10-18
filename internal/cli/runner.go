@@ -3,11 +3,16 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"os"
+	"os/user"
 	"strings"
+	"time"
 
 	"github.com/adrianfinantyo/arkon/internal/env"
+	"github.com/adrianfinantyo/arkon/internal/state"
 )
 
 // VersionInfo contains build-time metadata.
@@ -19,10 +24,11 @@ type VersionInfo struct {
 
 // Runner coordinates CLI argument parsing, environment abstraction, and command execution.
 type Runner struct {
-	Env     env.HostEnvironment
-	Stdout  io.Writer
-	Stderr  io.Writer
-	Version VersionInfo
+	Env      env.HostEnvironment
+	Stdout   io.Writer
+	Stderr   io.Writer
+	Version  VersionInfo
+	StateDir string
 }
 
 // NewRunner creates a new CLI runner.
@@ -78,7 +84,11 @@ func (r *Runner) Run(ctx context.Context, args []string) int {
 		return r.runVersion(jsonOutput)
 	case "schema":
 		return r.runSchema(jsonOutput)
-	case "apply", "status", "sleep", "inhibit":
+	case "inhibit":
+		return r.runInhibit(jsonOutput, subArgs)
+	case "sleep":
+		return r.runSleep(jsonOutput, subArgs)
+	case "apply", "status":
 		return r.runNotImplemented(subcommand, jsonOutput, subArgs)
 	default:
 		return r.runUnknown(subcommand, jsonOutput)
@@ -112,6 +122,326 @@ func (r *Runner) parseArgs(args []string) (jsonOutput bool, helpRequested bool, 
 	}
 
 	return jsonOutput, helpRequested, subcommand, subArgs
+}
+
+func (r *Runner) getStateManager() *state.Manager {
+	dir := r.StateDir
+	if dir == "" {
+		if r.Env != nil {
+			if v, ok := r.Env.LookupEnv("ARKON_STATE_DIR"); ok && v != "" {
+				dir = v
+			}
+		}
+		if dir == "" {
+			dir = os.Getenv("ARKON_STATE_DIR")
+		}
+		if dir == "" {
+			dir = state.DefaultStateDir
+		}
+	}
+
+	var opts []state.Option
+	if r.Env != nil {
+		opts = append(opts, state.WithClock(r.Env.Now))
+	}
+	return state.NewManager(dir, opts...)
+}
+
+func (r *Runner) invokingUser() string {
+	if r.Env != nil {
+		if u, ok := r.Env.LookupEnv("SUDO_USER"); ok && u != "" {
+			return u
+		}
+		if u, ok := r.Env.LookupEnv("USER"); ok && u != "" {
+			return u
+		}
+	}
+	if u := os.Getenv("SUDO_USER"); u != "" {
+		return u
+	}
+	if u, err := user.Current(); err == nil && u.Username != "" {
+		return u.Username
+	}
+	if u := os.Getenv("USER"); u != "" {
+		return u
+	}
+	return "operator"
+}
+
+func (r *Runner) runInhibit(jsonOutput bool, args []string) int {
+	// Check for list subcommand or flag
+	if len(args) > 0 && args[0] == "list" {
+		return r.runInhibitList(jsonOutput)
+	}
+	for _, arg := range args {
+		if arg == "--list" {
+			return r.runInhibitList(jsonOutput)
+		}
+	}
+
+	// Check for release subcommand or flag
+	if len(args) > 0 && args[0] == "release" {
+		id := ""
+		if len(args) > 1 {
+			id = args[1]
+		}
+		return r.runInhibitRelease(jsonOutput, id)
+	}
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "--release" {
+			id := ""
+			if i+1 < len(args) {
+				id = args[i+1]
+			}
+			return r.runInhibitRelease(jsonOutput, id)
+		}
+		if strings.HasPrefix(arg, "--release=") {
+			return r.runInhibitRelease(jsonOutput, strings.TrimPrefix(arg, "--release="))
+		}
+	}
+
+	// Parse flags for creating a lock
+	reason := "Manual maintenance window"
+	durationStr := "2h"
+
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "-r" || arg == "--reason":
+			if i+1 < len(args) {
+				reason = args[i+1]
+				i++
+			}
+		case strings.HasPrefix(arg, "--reason="):
+			reason = strings.TrimPrefix(arg, "--reason=")
+		case arg == "-d" || arg == "--duration":
+			if i+1 < len(args) {
+				durationStr = args[i+1]
+				i++
+			}
+		case strings.HasPrefix(arg, "--duration="):
+			durationStr = strings.TrimPrefix(arg, "--duration=")
+		}
+	}
+
+	dur, err := time.ParseDuration(durationStr)
+	if err != nil {
+		msg := fmt.Sprintf("Invalid duration %q: %v", durationStr, err)
+		if jsonOutput {
+			_ = WriteJSON(r.Stdout, false, nil, &Error{
+				Code:    "ERR_INVALID_DURATION",
+				Message: msg,
+			})
+			return ExitGeneralError
+		}
+		fmt.Fprintf(r.Stderr, "Error: %s\n", msg)
+		return ExitGeneralError
+	}
+
+	mgr := r.getStateManager()
+	lock, err := mgr.AcquireLock(reason, dur, r.invokingUser())
+	if err != nil {
+		msg := fmt.Sprintf("Failed to acquire lock: %v", err)
+		if jsonOutput {
+			_ = WriteJSON(r.Stdout, false, nil, &Error{
+				Code:    "ERR_ACQUIRE_LOCK_FAILED",
+				Message: msg,
+			})
+			return ExitGeneralError
+		}
+		fmt.Fprintf(r.Stderr, "Error: %s\n", msg)
+		return ExitGeneralError
+	}
+
+	if jsonOutput {
+		_ = WriteJSON(r.Stdout, true, lock, nil)
+		return ExitOK
+	}
+
+	fmt.Fprintf(r.Stdout, "● Inhibition Lock Created: %s\n", lock.ID)
+	fmt.Fprintf(r.Stdout, "  Reason:    %s\n", lock.Reason)
+	fmt.Fprintf(r.Stdout, "  Duration:  %s (expires at %s)\n", state.FormatRemaining(dur), lock.ExpiresAt.Format("15:04:05 MST"))
+	fmt.Fprintf(r.Stdout, "  To cancel: arkon inhibit release %s\n", lock.ID)
+	return ExitOK
+}
+
+func (r *Runner) runInhibitList(jsonOutput bool) int {
+	mgr := r.getStateManager()
+	locks, err := mgr.ListLocks()
+	if err != nil {
+		if jsonOutput {
+			_ = WriteJSON(r.Stdout, false, nil, &Error{
+				Code:    "ERR_LIST_LOCKS_FAILED",
+				Message: err.Error(),
+			})
+			return ExitGeneralError
+		}
+		fmt.Fprintf(r.Stderr, "Error: failed to list locks: %v\n", err)
+		return ExitGeneralError
+	}
+
+	if jsonOutput {
+		_ = WriteJSON(r.Stdout, true, locks, nil)
+		return ExitOK
+	}
+
+	if len(locks) == 0 {
+		fmt.Fprintf(r.Stdout, "● Maintenance Locks: None active (operational)\n")
+		return ExitOK
+	}
+
+	fmt.Fprintf(r.Stdout, "● Maintenance Locks:\n")
+	for _, l := range locks {
+		fmt.Fprintf(r.Stdout, "  - %s: %q (expires in %s)\n", l.ID, l.Reason, l.Remaining)
+	}
+	return ExitOK
+}
+
+func (r *Runner) runInhibitRelease(jsonOutput bool, id string) int {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		msg := "Lock ID is required for release. Run 'arkon inhibit list' to view active locks."
+		if jsonOutput {
+			_ = WriteJSON(r.Stdout, false, nil, &Error{
+				Code:    "ERR_MISSING_ARGUMENT",
+				Message: msg,
+			})
+			return ExitGeneralError
+		}
+		fmt.Fprintf(r.Stderr, "Error: %s\n", msg)
+		return ExitGeneralError
+	}
+
+	mgr := r.getStateManager()
+	err := mgr.ReleaseLock(id)
+	if err != nil {
+		if errors.Is(err, state.ErrLockNotFound) {
+			msg := fmt.Sprintf("inhibition lock '%s' not found", id)
+			if jsonOutput {
+				_ = WriteJSON(r.Stdout, false, nil, &Error{
+					Code:    "ERR_LOCK_NOT_FOUND",
+					Message: msg,
+				})
+				return ExitGeneralError
+			}
+			fmt.Fprintf(r.Stderr, "Error: %s\n", msg)
+			return ExitGeneralError
+		}
+
+		if jsonOutput {
+			_ = WriteJSON(r.Stdout, false, nil, &Error{
+				Code:    "ERR_RELEASE_FAILED",
+				Message: err.Error(),
+			})
+			return ExitGeneralError
+		}
+		fmt.Fprintf(r.Stderr, "Error: failed to release lock: %v\n", err)
+		return ExitGeneralError
+	}
+
+	if jsonOutput {
+		_ = WriteJSON(r.Stdout, true, map[string]string{
+			"id":     id,
+			"status": "released",
+		}, nil)
+		return ExitOK
+	}
+
+	fmt.Fprintf(r.Stdout, "✔ Maintenance lock '%s' released. Circadian schedule resumed.\n", id)
+	return ExitOK
+}
+
+func (r *Runner) runSleep(jsonOutput bool, args []string) int {
+	force := false
+	simulateInhibit := false
+	simulateDaytime := false
+
+	for _, arg := range args {
+		switch arg {
+		case "--force":
+			force = true
+		case "--simulate-inhibit":
+			simulateInhibit = true
+		case "--simulate-daytime":
+			simulateDaytime = true
+		}
+	}
+
+	mgr := r.getStateManager()
+	activeLocks, err := mgr.ListLocks()
+	if err != nil && !simulateInhibit {
+		if jsonOutput {
+			_ = WriteJSON(r.Stdout, false, nil, &Error{
+				Code:    "ERR_STATE_READ_FAILED",
+				Message: err.Error(),
+			})
+			return ExitGeneralError
+		}
+		fmt.Fprintf(r.Stderr, "Error reading state: %v\n", err)
+		return ExitGeneralError
+	}
+
+	if simulateInhibit && len(activeLocks) == 0 {
+		activeLocks = []state.InhibitionLock{
+			{
+				ID:        "inh-simulated",
+				Reason:    "Simulated maintenance override",
+				CreatedBy: "simulation",
+				ExpiresAt: r.Env.Now().Add(1 * time.Hour),
+				Remaining: "1h",
+			},
+		}
+	}
+
+	daytimeCfg := state.DaytimeConfig{
+		WakeAt:            "07:00",
+		SleepAt:           "23:00",
+		DaytimeProtection: simulateDaytime,
+	}
+
+	checkTime := r.Env.Now()
+	if simulateDaytime {
+		checkTime = time.Date(checkTime.Year(), checkTime.Month(), checkTime.Day(), 14, 0, 0, 0, checkTime.Location())
+	}
+
+	eval := state.EvaluateSleepAllowed(checkTime, daytimeCfg, activeLocks, force)
+	if eval.Inhibited {
+		if jsonOutput {
+			_ = WriteJSON(r.Stdout, false, nil, &Error{
+				Code:    eval.Code,
+				Message: eval.Reason,
+			})
+			return ExitInhibited
+		}
+
+		if eval.Code == "ERR_INHIBITED" {
+			fmt.Fprintf(r.Stderr, "● INHIBITED (code 2): Active maintenance lock detected\n")
+			if eval.Lock != nil {
+				fmt.Fprintf(r.Stderr, "  Lock ID:     %s\n", eval.Lock.ID)
+				fmt.Fprintf(r.Stderr, "  Reason:      %s\n", eval.Lock.Reason)
+				fmt.Fprintf(r.Stderr, "  Expires:     in %s\n", eval.Lock.Remaining)
+				fmt.Fprintf(r.Stderr, "  To release:  arkon inhibit release %s\n", eval.Lock.ID)
+			}
+			fmt.Fprintf(r.Stderr, "  To override: arkon sleep --force\n")
+		} else {
+			fmt.Fprintf(r.Stderr, "● ERROR (code 2): Refusing sleep during daytime window\n")
+			fmt.Fprintf(r.Stderr, "  %s\n", eval.Reason)
+			fmt.Fprintf(r.Stderr, "  To override: arkon sleep --force\n")
+		}
+		return ExitInhibited
+	}
+
+	if jsonOutput {
+		_ = WriteJSON(r.Stdout, true, map[string]any{
+			"status": "completed",
+			"forced": force,
+		}, nil)
+		return ExitOK
+	}
+
+	fmt.Fprintf(r.Stdout, "✔ Sleep sequence initiated.\n")
+	return ExitOK
 }
 
 func (r *Runner) runVersion(jsonOutput bool) int {
