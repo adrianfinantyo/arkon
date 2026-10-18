@@ -19,7 +19,9 @@ type MemEnv struct {
 	CurrentTime time.Time
 	EUID        int
 	SyncCount   int
-	ExecHandler func(ctx context.Context, name string, args ...string) ([]byte, error)
+	ExecHandler  func(ctx context.Context, name string, args ...string) ([]byte, error)
+	WriteHandler func(path string, data []byte, perm os.FileMode) error
+	ReadHandler  func(path string) ([]byte, error)
 }
 
 // NewMemEnv creates an in-memory test environment.
@@ -51,6 +53,10 @@ func (m *MemEnv) WriteFile(path string, data []byte, perm os.FileMode) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	if m.WriteHandler != nil {
+		return m.WriteHandler(path, data, perm)
+	}
+
 	cp := make([]byte, len(data))
 	copy(cp, data)
 	m.Files[path] = cp
@@ -60,6 +66,10 @@ func (m *MemEnv) WriteFile(path string, data []byte, perm os.FileMode) error {
 func (m *MemEnv) ReadFile(path string) ([]byte, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
+
+	if m.ReadHandler != nil {
+		return m.ReadHandler(path)
+	}
 
 	data, exists := m.Files[path]
 	if !exists {
