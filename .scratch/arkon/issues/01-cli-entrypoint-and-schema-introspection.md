@@ -4,12 +4,12 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** completed
 
-- [ ] Passing `-h` or `--help` prints the top-level command usage listing all subcommands (`apply`, `status`, `sleep`, `inhibit`, `schema`, `version`).
-- [ ] Running `arkon version` outputs binary version, git commit, and build date.
-- [ ] Running `arkon schema` prints the complete Draft 2020-12 JSON Schema for manifests and state files to standard output.
-- [ ] Passing the global `--json` flag wraps all command outputs in a typed JSON envelope containing `success` (boolean), `data` (object or null), and `error` (code, message, details or null).
-- [ ] The CLI enforces standard exit codes: `0` (Success), `1` (General Error), `2` (Inhibited), `3` (Validation/Compilation Failure), `4` (Insufficient Privileges).
-- [ ] Unknown subcommands return exit code 1 with an actionable diagnostic message.
-- [ ] The `HostEnvironment` interface and command runner are established so all subsequent CLI commands can be exercised end-to-end in automated tests without root privileges.
+- [x] Passing `-h` or `--help` prints the top-level command usage listing all subcommands (`apply`, `status`, `sleep`, `inhibit`, `schema`, `version`).
+- [x] Running `arkon version` outputs binary version, git commit, and build date.
+- [x] Running `arkon schema` prints the complete Draft 2020-12 JSON Schema for manifests and state files to standard output.
+- [x] Passing the global `--json` flag wraps all command outputs in a typed JSON envelope containing `success` (boolean), `data` (object or null), and `error` (code, message, details or null).
+- [x] The CLI enforces standard exit codes: `0` (Success), `1` (General Error), `2` (Inhibited), `3` (Validation/Compilation Failure), `4` (Insufficient Privileges).
+- [x] Unknown subcommands return exit code 1 with an actionable diagnostic message.
+- [x] The `HostEnvironment` interface and command runner are established so all subsequent CLI commands can be exercised end-to-end in automated tests without root privileges.
