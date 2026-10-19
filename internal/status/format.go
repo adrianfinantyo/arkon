@@ -127,6 +127,60 @@ func FormatStatus(data *StatusData, noColor bool) string {
 	}
 	sb.WriteString("\n")
 
+	// Workload Startup Pipeline
+	bootUnit := data.Startup.BootUnit
+	if bootUnit == "" {
+		bootUnit = "inactive"
+	}
+	sb.WriteString(fmt.Sprintf("%s● Workload Startup Pipeline%s %s(%s %s)%s\n", bold, reset, gray, "arkon-boot.service", bootUnit, reset))
+	startupProvider := data.Startup.Provider
+	if startupProvider == "" {
+		startupProvider = "docker-compose"
+	}
+	startupStackWord := "stacks"
+	if data.Startup.StackCount == 1 {
+		startupStackWord = "stack"
+	}
+	sb.WriteString(fmt.Sprintf("  Provider:    %s (%d %s)\n", startupProvider, data.Startup.StackCount, startupStackWord))
+	var progParts []string
+	if len(data.Hooks.PostWake) > 0 {
+		progParts = append(progParts, "post_wake hooks")
+	}
+	progParts = append(progParts, data.Startup.Profiles...)
+	if len(progParts) > 0 {
+		sb.WriteString(fmt.Sprintf("  Progression: %s\n", strings.Join(progParts, " → ")))
+	} else {
+		sb.WriteString("  Progression: None\n")
+	}
+	if len(data.Startup.Stacks) > 0 {
+		sb.WriteString(fmt.Sprintf("  Stacks:      %s\n", strings.Join(data.Startup.Stacks, ", ")))
+	}
+	sb.WriteString("\n")
+
+	// Lifecycle Hooks
+	sb.WriteString(fmt.Sprintf("%s● Lifecycle Hooks%s\n", bold, reset))
+	hasHooks := len(data.Hooks.PreTeardown) > 0 ||
+		len(data.Hooks.PostTeardown) > 0 ||
+		len(data.Hooks.PreSleep) > 0 ||
+		len(data.Hooks.PostWake) > 0
+	if !hasHooks {
+		sb.WriteString("  Hooks: None configured\n\n")
+	} else {
+		if len(data.Hooks.PreTeardown) > 0 {
+			sb.WriteString(fmt.Sprintf("  Pre-Teardown:  %s\n", strings.Join(data.Hooks.PreTeardown, ", ")))
+		}
+		if len(data.Hooks.PostTeardown) > 0 {
+			sb.WriteString(fmt.Sprintf("  Post-Teardown: %s\n", strings.Join(data.Hooks.PostTeardown, ", ")))
+		}
+		if len(data.Hooks.PreSleep) > 0 {
+			sb.WriteString(fmt.Sprintf("  Pre-Sleep:     %s\n", strings.Join(data.Hooks.PreSleep, ", ")))
+		}
+		if len(data.Hooks.PostWake) > 0 {
+			sb.WriteString(fmt.Sprintf("  Post-Wake:     %s\n", strings.Join(data.Hooks.PostWake, ", ")))
+		}
+		sb.WriteString("\n")
+	}
+
 	// Maintenance Locks
 	sb.WriteString(fmt.Sprintf("%s● Maintenance Locks%s\n", bold, reset))
 	if len(data.InhibitionLocks) == 0 {

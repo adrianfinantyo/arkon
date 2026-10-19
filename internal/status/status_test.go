@@ -55,10 +55,13 @@ Dirty:                 0 kB
 	}
 	mem.Files["/var/lib/arkon/state.json"] = stBytes
 
-	// Mock systemctl is-active for timer
+	// Mock systemctl is-active for timer and is-enabled for boot service
 	mem.ExecHandler = func(ctx context.Context, name string, args ...string) ([]byte, error) {
 		if name == "systemctl" && len(args) == 2 && args[0] == "is-active" && args[1] == "arkon-sleep.timer" {
 			return []byte("active\n"), nil
+		}
+		if name == "systemctl" && len(args) == 2 && args[0] == "is-enabled" && args[1] == "arkon-boot.service" {
+			return []byte("enabled\n"), nil
 		}
 		return nil, nil
 	}
@@ -79,6 +82,27 @@ Dirty:                 0 kB
 			ProfileOrder: []string{"apps", "infra"},
 			ComposeStacks: []manifest.ComposeStack{
 				{Path: "/opt/stacks/apps"},
+			},
+		},
+		Startup: manifest.StartupConfig{
+			Provider: "docker-compose",
+			Profiles: []string{"infra", "apps"},
+			ComposeStacks: []manifest.ComposeStack{
+				{Path: "/opt/stacks/apps"},
+			},
+		},
+		Hooks: manifest.HooksConfig{
+			PreTeardown: []manifest.HookConfig{
+				{Name: "pre-stop-hook", Command: "echo stop"},
+			},
+			PostTeardown: []manifest.HookConfig{
+				{Name: "filesystem-sync", Command: "sync"},
+			},
+			PreSleep: []manifest.HookConfig{
+				{Name: "prepare-sleep", Command: "echo sleep"},
+			},
+			PostWake: []manifest.HookConfig{
+				{Name: "notify-wake", Command: "echo awake"},
 			},
 		},
 	}
@@ -143,6 +167,34 @@ Dirty:                 0 kB
 	}
 	if len(data.Teardown.ProfileOrder) != 2 || data.Teardown.ProfileOrder[0] != "apps" {
 		t.Errorf("unexpected profile order: %v", data.Teardown.ProfileOrder)
+	}
+
+	// Startup checks
+	if data.Startup.Provider != "docker-compose" {
+		t.Errorf("expected startup provider docker-compose, got %q", data.Startup.Provider)
+	}
+	if data.Startup.BootUnit != "enabled" || !data.Startup.BootEnabled {
+		t.Errorf("expected boot unit enabled, got unit=%q enabled=%v", data.Startup.BootUnit, data.Startup.BootEnabled)
+	}
+	if data.Startup.StackCount != 1 || len(data.Startup.Stacks) != 1 || data.Startup.Stacks[0] != "/opt/stacks/apps" {
+		t.Errorf("unexpected startup stacks: count=%d stacks=%v", data.Startup.StackCount, data.Startup.Stacks)
+	}
+	if len(data.Startup.Profiles) != 2 || data.Startup.Profiles[0] != "infra" || data.Startup.Profiles[1] != "apps" {
+		t.Errorf("unexpected startup profiles: %v", data.Startup.Profiles)
+	}
+
+	// Hooks checks
+	if len(data.Hooks.PreTeardown) != 1 || data.Hooks.PreTeardown[0] != "pre-stop-hook" {
+		t.Errorf("unexpected pre_teardown hooks: %v", data.Hooks.PreTeardown)
+	}
+	if len(data.Hooks.PostTeardown) != 1 || data.Hooks.PostTeardown[0] != "filesystem-sync" {
+		t.Errorf("unexpected post_teardown hooks: %v", data.Hooks.PostTeardown)
+	}
+	if len(data.Hooks.PreSleep) != 1 || data.Hooks.PreSleep[0] != "prepare-sleep" {
+		t.Errorf("unexpected pre_sleep hooks: %v", data.Hooks.PreSleep)
+	}
+	if len(data.Hooks.PostWake) != 1 || data.Hooks.PostWake[0] != "notify-wake" {
+		t.Errorf("unexpected post_wake hooks: %v", data.Hooks.PostWake)
 	}
 }
 
@@ -302,6 +354,20 @@ func TestFormatStatusTextLayout(t *testing.T) {
 			StackCount:   1,
 			Stacks:       []string{"/opt/stacks/apps"},
 		},
+		Startup: StartupStatus{
+			Provider:    "docker-compose",
+			Profiles:    []string{"infra", "apps"},
+			StackCount:  1,
+			Stacks:      []string{"/opt/stacks/apps"},
+			BootUnit:    "enabled",
+			BootEnabled: true,
+		},
+		Hooks: HooksStatus{
+			PreTeardown:  []string{"pre-stop-hook"},
+			PostTeardown: []string{"filesystem-sync"},
+			PreSleep:     []string{"prepare-sleep"},
+			PostWake:     []string{"notify-wake"},
+		},
 	}
 
 	output := FormatStatus(data, false)
@@ -312,6 +378,8 @@ func TestFormatStatusTextLayout(t *testing.T) {
 		"● Circadian Schedule",
 		"● Hardware RTC Wakealarm",
 		"● Workload Teardown Pipeline",
+		"● Workload Startup Pipeline",
+		"● Lifecycle Hooks",
 		"● Maintenance Locks",
 	}
 
@@ -353,11 +421,91 @@ func TestFormatStatusTextLayout(t *testing.T) {
 		t.Errorf("missing lock reason")
 	}
 
+	// Startup pipeline checks
+	if !strings.Contains(output, "(arkon-boot.service enabled)") {
+		t.Errorf("expected boot unit badge in output: %s", output)
+	}
+	if !strings.Contains(output, "Progression: post_wake hooks → infra → apps") {
+		t.Errorf("expected startup progression in output: %s", output)
+	}
+
+	// Lifecycle hooks checks
+	if !strings.Contains(output, "Pre-Teardown:  pre-stop-hook") {
+		t.Errorf("expected Pre-Teardown hook in output: %s", output)
+	}
+	if !strings.Contains(output, "Post-Teardown: filesystem-sync") {
+		t.Errorf("expected Post-Teardown hook in output: %s", output)
+	}
+	if !strings.Contains(output, "Pre-Sleep:     prepare-sleep") {
+		t.Errorf("expected Pre-Sleep hook in output: %s", output)
+	}
+	if !strings.Contains(output, "Post-Wake:     notify-wake") {
+		t.Errorf("expected Post-Wake hook in output: %s", output)
+	}
+
 	// Test no-color output contains no ANSI escape codes
 	noColorOut := FormatStatus(data, true)
 	if strings.Contains(noColorOut, "\033[") {
 		t.Errorf("expected no-color output to have no ANSI escapes, found some: %s", noColorOut)
 	}
+}
+
+func TestFormatStatusNoHooks(t *testing.T) {
+	data := &StatusData{
+		HostPowerState: "ACPI S0 (Operational Active)",
+		Hostname:       "testhost",
+		Startup: StartupStatus{
+			Provider:    "docker-compose",
+			Profiles:    []string{"apps"},
+			StackCount:  1,
+			BootUnit:    "disabled",
+			BootEnabled: false,
+		},
+		Hooks: HooksStatus{
+			PreTeardown:  []string{},
+			PostTeardown: []string{},
+			PreSleep:     []string{},
+			PostWake:     []string{},
+		},
+	}
+
+	out := FormatStatus(data, true)
+	if !strings.Contains(out, "Hooks: None configured") {
+		t.Errorf("expected 'Hooks: None configured' when no hooks set, got:\n%s", out)
+	}
+	if !strings.Contains(out, "(arkon-boot.service disabled)") {
+		t.Errorf("expected disabled badge, got:\n%s", out)
+	}
+	if !strings.Contains(out, "Progression: apps") {
+		t.Errorf("expected progression without post_wake hooks, got:\n%s", out)
+	}
+}
+
+func TestCollectStartupBootUnitStates(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("disabled boot unit", func(t *testing.T) {
+		mem := env.NewMemEnv()
+		mem.ExecHandler = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+			if name == "systemctl" && len(args) == 2 && args[0] == "is-enabled" && args[1] == "arkon-boot.service" {
+				return []byte("disabled\n"), nil
+			}
+			return nil, nil
+		}
+
+		st := collectStartup(ctx, mem, nil)
+		if st.BootUnit != "disabled" || st.BootEnabled {
+			t.Errorf("expected disabled boot unit, got unit=%q enabled=%v", st.BootUnit, st.BootEnabled)
+		}
+	})
+
+	t.Run("inactive on missing unit", func(t *testing.T) {
+		mem := env.NewMemEnv()
+		st := collectStartup(ctx, mem, nil)
+		if st.BootUnit != "inactive" || st.BootEnabled {
+			t.Errorf("expected inactive boot unit, got unit=%q enabled=%v", st.BootUnit, st.BootEnabled)
+		}
+	})
 }
 
 func TestStatusJSONSerialization(t *testing.T) {
@@ -378,6 +526,20 @@ func TestStatusJSONSerialization(t *testing.T) {
 		Teardown: TeardownStatus{
 			Provider:   "docker-compose",
 			StackCount: 0,
+		},
+		Startup: StartupStatus{
+			Provider:    "docker-compose",
+			Profiles:    []string{"infra", "apps"},
+			StackCount:  1,
+			Stacks:      []string{"/opt/stacks/apps"},
+			BootUnit:    "enabled",
+			BootEnabled: true,
+		},
+		Hooks: HooksStatus{
+			PreTeardown:  []string{"pre-stop"},
+			PostTeardown: []string{"post-stop"},
+			PreSleep:     []string{"pre-sleep"},
+			PostWake:     []string{"post-wake"},
 		},
 	}
 
@@ -412,5 +574,28 @@ func TestStatusJSONSerialization(t *testing.T) {
 	}
 	if dataMap["hostname"] != "komsos" {
 		t.Errorf("expected hostname komsos, got %v", dataMap["hostname"])
+	}
+
+	startupMap, ok := dataMap["startup"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected startup map in JSON, got %T", dataMap["startup"])
+	}
+	if startupMap["provider"] != "docker-compose" {
+		t.Errorf("expected startup provider docker-compose, got %v", startupMap["provider"])
+	}
+	if startupMap["boot_unit"] != "enabled" || startupMap["boot_enabled"] != true {
+		t.Errorf("expected boot_unit enabled and boot_enabled true, got unit=%v enabled=%v", startupMap["boot_unit"], startupMap["boot_enabled"])
+	}
+	if startupMap["stack_count"] != float64(1) {
+		t.Errorf("expected stack_count 1, got %v", startupMap["stack_count"])
+	}
+
+	hooksMap, ok := dataMap["hooks"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected hooks map in JSON, got %T", dataMap["hooks"])
+	}
+	postWakeSlice, ok := hooksMap["post_wake"].([]any)
+	if !ok || len(postWakeSlice) != 1 || postWakeSlice[0] != "post-wake" {
+		t.Errorf("expected post_wake hook [post-wake], got %v", hooksMap["post_wake"])
 	}
 }
