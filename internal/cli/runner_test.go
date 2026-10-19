@@ -836,6 +836,7 @@ func TestInhibitReleaseErrors(t *testing.T) {
 }
 
 func setupSleepMemEnv(mem *env.MemEnv) {
+	mem.CurrentTime = time.Date(2026, 10, 19, 23, 30, 0, 0, time.UTC)
 	mem.Files["/proc/meminfo"] = []byte("MemTotal: 4000000 kB\nDirty: 0 kB\n")
 	mem.Files["/sys/class/rtc/rtc0/wakealarm"] = []byte("1700000000\n")
 	mem.ExecHandler = func(ctx context.Context, name string, args ...string) ([]byte, error) {
@@ -845,6 +846,7 @@ func setupSleepMemEnv(mem *env.MemEnv) {
 
 func TestSleepBlockedByActiveLockExit2(t *testing.T) {
 	mem := env.NewMemEnv()
+	mem.CurrentTime = time.Date(2026, 10, 19, 23, 30, 0, 0, time.UTC)
 	runner, stdout, stderr := newTestRunner(mem)
 	runner.StateDir = t.TempDir()
 
@@ -1298,6 +1300,7 @@ func TestRunnerApplyVerificationErrorExitCode3(t *testing.T) {
 
 func TestSleepDryRunText(t *testing.T) {
 	mem := env.NewMemEnv()
+	mem.CurrentTime = time.Date(2026, 10, 19, 23, 30, 0, 0, time.UTC)
 	runner, stdout, stderr := newTestRunner(mem)
 	runner.StateDir = t.TempDir()
 
@@ -1329,6 +1332,7 @@ func TestSleepDryRunText(t *testing.T) {
 
 func TestSleepDryRunJSON(t *testing.T) {
 	mem := env.NewMemEnv()
+	mem.CurrentTime = time.Date(2026, 10, 19, 23, 30, 0, 0, time.UTC)
 	runner, stdout, stderr := newTestRunner(mem)
 	runner.StateDir = t.TempDir()
 
