@@ -25,7 +25,10 @@ A complete architectural blueprint and technical specification for **Arkon**, de
 
 ## Active tickets
 
-<!-- none currently open on frontier -->
+- [[09] Host Environment Seam Integrity & CLI Runner Decomposition](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/09-host-environment-seam-and-runner-decomposition.md)
+- [[10] State File Corruption Resilience & Recovery](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/10-state-file-corruption-resilience.md)
+- [[11] Spec Reconciliation & Daytime Window Configuration](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/11-spec-reconciliation-and-daytime-window-configuration.md)
+- [[12] Test Coverage Hardening & Binary-Level Exit Code Contracts](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/12-test-coverage-hardening-and-binary-contracts.md)
 
 ## Not yet specified
 
