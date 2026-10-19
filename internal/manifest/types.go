@@ -13,6 +13,7 @@ type Manifest struct {
 	Host       HostConfig       `yaml:"host" json:"host"`
 	Circadian  CircadianConfig  `yaml:"circadian" json:"circadian"`
 	Teardown   TeardownConfig   `yaml:"teardown" json:"teardown"`
+	Startup    StartupConfig    `yaml:"startup" json:"startup"`
 	Hooks      HooksConfig      `yaml:"hooks" json:"hooks"`
 	Inhibition InhibitionConfig `yaml:"inhibition" json:"inhibition"`
 }
@@ -42,6 +43,23 @@ type TeardownConfig struct {
 // ComposeStack references a Docker Compose directory.
 type ComposeStack struct {
 	Path string `yaml:"path" json:"path"`
+}
+
+// StartupConfig defines workload startup providers and profile ordering upon boot.
+type StartupConfig struct {
+	Enabled        *bool          `yaml:"enabled,omitempty" json:"enabled,omitempty"`
+	Provider       string         `yaml:"provider" json:"provider"`
+	TimeoutSeconds int            `yaml:"timeout_seconds" json:"timeout_seconds"`
+	ComposeStacks  []ComposeStack `yaml:"compose_stacks" json:"compose_stacks"`
+	Profiles       []string       `yaml:"profiles" json:"profiles"`
+}
+
+// IsEnabled reports whether startup orchestration is enabled.
+func (s StartupConfig) IsEnabled() bool {
+	if s.Enabled != nil {
+		return *s.Enabled
+	}
+	return len(s.ComposeStacks) > 0 || len(s.Profiles) > 0
 }
 
 // HooksConfig groups lifecycle hook commands.

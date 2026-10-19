@@ -95,12 +95,30 @@ func Compile(m *manifest.Manifest, opts CompileOptions) (*CompiledUnits, error) 
 		return nil, fmt.Errorf("failed to execute timer template: %w", err)
 	}
 
+	bootEnabled := m.Startup.IsEnabled()
+	var bootContent string
+	if bootEnabled {
+		bootTmpl, err := template.ParseFS(templateFS, "templates/arkon-boot.service.tmpl")
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse boot service template: %w", err)
+		}
+		var bootBuf bytes.Buffer
+		if err := bootTmpl.Execute(&bootBuf, tmplData); err != nil {
+			return nil, fmt.Errorf("failed to execute boot service template: %w", err)
+		}
+		bootContent = bootBuf.String()
+	}
+
 	return &CompiledUnits{
-		ServiceName:    DefaultServiceName,
-		TimerName:      DefaultTimerName,
-		ServicePath:    filepath.Join(DefaultTargetDir, DefaultServiceName),
-		TimerPath:      filepath.Join(DefaultTargetDir, DefaultTimerName),
-		ServiceContent: serviceBuf.String(),
-		TimerContent:   timerBuf.String(),
+		ServiceName:        DefaultServiceName,
+		TimerName:          DefaultTimerName,
+		BootServiceName:    DefaultBootServiceName,
+		ServicePath:        filepath.Join(DefaultTargetDir, DefaultServiceName),
+		TimerPath:          filepath.Join(DefaultTargetDir, DefaultTimerName),
+		BootServicePath:    filepath.Join(DefaultTargetDir, DefaultBootServiceName),
+		ServiceContent:     serviceBuf.String(),
+		TimerContent:       timerBuf.String(),
+		BootServiceContent: bootContent,
+		BootEnabled:        bootEnabled,
 	}, nil
 }

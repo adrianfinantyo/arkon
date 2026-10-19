@@ -110,7 +110,22 @@ func (m *Manifest) Validate() error {
 		}
 	}
 
-	// 5. Hooks
+	// 5. Startup
+	if m.Startup.IsEnabled() {
+		if !validProviders[m.Startup.Provider] {
+			addErr("startup.provider", fmt.Sprintf("invalid provider %q, must be one of: docker-compose, podman-compose, command, systemd", m.Startup.Provider))
+		}
+		if m.Startup.TimeoutSeconds <= 0 {
+			addErr("startup.timeout_seconds", "timeout_seconds must be positive")
+		}
+		for i, stack := range m.Startup.ComposeStacks {
+			if stack.Path == "" {
+				addErr(fmt.Sprintf("startup.compose_stacks[%d].path", i), "compose stack path cannot be empty")
+			}
+		}
+	}
+
+	// 6. Hooks
 	validateHooks("hooks.pre_teardown", m.Hooks.PreTeardown, addErr)
 	validateHooks("hooks.post_teardown", m.Hooks.PostTeardown, addErr)
 	validateHooks("hooks.pre_sleep", m.Hooks.PreSleep, addErr)

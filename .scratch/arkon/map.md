@@ -23,11 +23,12 @@ A complete architectural blueprint and technical specification for **Arkon**, de
 - [[04] Inhibition Locks & State Management](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/wayfinder/04-inhibition-locks-and-state-management.md): Atomic Root SSD state persistence ('/var/lib/arkon/state.json') guarded by 'flock', auto-expiring timed inhibition locks, daytime operational window protection with explicit violation messages, and exit code 2 machine contract.
 - [[05] CLI Command Surface & Terminal UX](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/wayfinder/05-cli-command-surface-and-terminal-ux.md): Single unified borderless left-rail layout (immune to terminal width/wrapping, zero dual-view bloat), actionable diagnostic error reporting, and deterministic '--json' machine contract.
 - [[09-13] Core Seam Hardening, Spec Reconciliation, Exit Codes & Verbose Diagnostics](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/): Resolved PR #14 review findings across HostEnvironment seam integrity, state corruption quarantine recovery, configurable daytime windows, binary-level exit code assertions (codes 2, 3, 4), and verbose diagnostic logging to stderr.
+- [[14] Catch-All Workload Teardown via Profile Wildcard](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/14-compose-stop-all-profiles.md): Pass '--profile "*"' in StopResidual to ensure untracked or profile-tagged containers across any profile (such as proxy services) are stopped cleanly before poweroff.
+- [[15] Declarative Startup Orchestrator & Boot Systemd Unit](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/15-startup-orchestration-and-boot-unit.md): Add declarative 'startup:' manifest block, 'arkon up' CLI command for boot sequences, and compile/install 'arkon-boot.service' on multi-user.target to unify full boot-to-shutdown operations into arkon.yaml.
 
 ## Active tickets
 
-- [[14] Catch-All Workload Teardown via Profile Wildcard](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/14-compose-stop-all-profiles.md)
-- [[15] Declarative Startup Orchestrator & Boot Systemd Unit](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/15-startup-orchestration-and-boot-unit.md)
+None.
 
 ## Not yet specified
 

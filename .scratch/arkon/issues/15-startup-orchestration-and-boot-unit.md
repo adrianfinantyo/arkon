@@ -7,12 +7,12 @@
 
 **Blocked by:** 14: Catch-All Workload Teardown via Profile Wildcard
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Add `StartupConfig` to `internal/manifest/types.go` and wire into `Manifest` struct.
-- [ ] Add default application and validation rules for `StartupConfig` in `internal/manifest/defaults.go` and `validation.go`.
-- [ ] Update canonical JSON schema in `internal/cli/schema.go`.
-- [ ] Create `internal/systemd/templates/arkon-boot.service.tmpl`.
-- [ ] Update `internal/systemd/compiler.go` and `installer.go` to compile, verify, and atomically install `arkon-boot.service`.
-- [ ] Implement `arkon up` command in `internal/cli/runner_up.go` and wire into `Runner.Run`.
-- [ ] Add unit tests for manifest parsing, startup systemd unit compilation/installation, and `arkon up` CLI execution.
+- [x] Add `StartupConfig` to `internal/manifest/types.go` and wire into `Manifest` struct.
+- [x] Add default application and validation rules for `StartupConfig` in `internal/manifest/defaults.go` and `validation.go`.
+- [x] Update canonical JSON schema in `internal/cli/schema.go`.
+- [x] Create `internal/systemd/templates/arkon-boot.service.tmpl`.
+- [x] Update `internal/systemd/compiler.go` and `installer.go` to compile, verify, and atomically install `arkon-boot.service`.
+- [x] Implement `arkon up` command in `internal/cli/runner_up.go` and wire into `Runner.Run`.
+- [x] Add unit tests for manifest parsing, startup systemd unit compilation/installation, and `arkon up` CLI execution.

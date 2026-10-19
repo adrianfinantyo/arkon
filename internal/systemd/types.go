@@ -4,9 +4,10 @@ import "errors"
 
 // Default unit and path constants.
 const (
-	DefaultServiceName = "arkon-sleep.service"
-	DefaultTimerName   = "arkon-sleep.timer"
-	DefaultTargetDir   = "/etc/systemd/system"
+	DefaultServiceName     = "arkon-sleep.service"
+	DefaultTimerName       = "arkon-sleep.timer"
+	DefaultBootServiceName = "arkon-boot.service"
+	DefaultTargetDir       = "/etc/systemd/system"
 )
 
 // Standard systemd installation errors.
@@ -24,12 +25,16 @@ type CompileOptions struct {
 
 // CompiledUnits holds compiled systemd unit file contents and names.
 type CompiledUnits struct {
-	ServiceName    string
-	TimerName      string
-	ServicePath    string
-	TimerPath      string
-	ServiceContent string
-	TimerContent   string
+	ServiceName        string
+	TimerName          string
+	BootServiceName    string
+	ServicePath        string
+	TimerPath          string
+	BootServicePath    string
+	ServiceContent     string
+	TimerContent       string
+	BootServiceContent string
+	BootEnabled        bool
 }
 
 // InstallOptions defines configuration parameters for atomic unit installation.
@@ -50,5 +55,6 @@ type ApplyData struct {
 	UnitContents  map[string]string `json:"unit_contents,omitempty"`
 	SystemdReload bool              `json:"systemd_reload"`
 	TimerEnabled  bool              `json:"timer_enabled"`
+	BootEnabled   bool              `json:"boot_enabled"`
 	NextTrigger   string            `json:"next_trigger,omitempty"`
 }

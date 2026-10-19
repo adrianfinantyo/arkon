@@ -1,0 +1,13 @@
+[Unit]
+Description=Arkon Boot & Workload Startup Orchestrator
+Documentation=https://github.com/adrianfinantyo/arkon
+After=network-online.target docker.service
+Wants=network-online.target docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart={{.BinaryPath}} up --config {{.ConfigPath}}
+
+[Install]
+WantedBy=multi-user.target
