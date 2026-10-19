@@ -698,4 +698,3 @@ func TestStartupConfig(t *testing.T) {
 		}
 	})
 }
-
