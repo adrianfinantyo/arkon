@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+set -e
+
+# Pre-push hook: Run local CI parity checks before allowing push to remote
+
+if [ "${SKIP_PRE_PUSH:-0}" = "1" ]; then
+    echo "[git-hook] SKIP_PRE_PUSH is set. Skipping pre-push checks."
+    exit 0
+fi
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+CHECK_CI_SCRIPT="$REPO_ROOT/scripts/check-ci.sh"
+
+if [ ! -f "$CHECK_CI_SCRIPT" ]; then
+    echo "[git-hook] Error: $CHECK_CI_SCRIPT not found."
+    exit 1
+fi
+
+echo "[git-hook] Running local CI parity checks before push..."
+if ! "$CHECK_CI_SCRIPT"; then
+    echo ""
+    echo "[git-hook] ❌ Push blocked: Local CI checks failed."
+    echo "[git-hook] Fix the issues reported above and re-push."
+    echo "[git-hook] (To bypass in an emergency, use 'git push --no-verify' or 'SKIP_PRE_PUSH=1 git push')"
+    exit 1
+fi
+
+exit 0
