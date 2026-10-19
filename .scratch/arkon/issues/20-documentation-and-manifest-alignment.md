@@ -4,10 +4,10 @@
 
 **Blocked by:** 16: Status Command Startup & Hooks Visibility, 18: GoReleaser Packaging & Release Automation, 19: Workload Provider Extensibility Documentation & Roadmap
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Create `arkon.example.yaml` in the root repository containing every configuration key with comprehensive comments.
-- [ ] Update `README.md` with the full `arkon.yaml` example (including `startup:` and `hooks:`).
-- [ ] Update `README.md` with the live borderless left-rail status preview.
-- [ ] Add quickstart installation instructions (curl one-liner and `.deb` package install) to `README.md`.
-- [ ] Add roadmap section linking to provider contribution issues.
+- [x] Create `arkon.example.yaml` in the root repository containing every configuration key with comprehensive comments.
+- [x] Update `README.md` with the full `arkon.yaml` example (including `startup:` and `hooks:`).
+- [x] Update `README.md` with the live borderless left-rail status preview.
+- [x] Add quickstart installation instructions (curl one-liner and `.deb` package install) to `README.md`.
+- [x] Add roadmap section linking to provider contribution issues.

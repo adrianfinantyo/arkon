@@ -1,0 +1,114 @@
+# Arkon Host Lifecycle Manifest (Reference Configuration)
+# Schema Version 1
+version: "1"
+
+# Host hardware and power transition configuration
+host:
+  # System timezone (IANA format, e.g. "Asia/Jakarta", "America/New_York", "UTC").
+  timezone: "Asia/Jakarta"
+
+  # Path to Linux Real-Time Clock wakealarm sysfs interface.
+  # Defaults to "/sys/class/rtc/rtc0/wakealarm".
+  rtc_device: "/sys/class/rtc/rtc0/wakealarm"
+
+  # Hardware ACPI power transition mode when sleep window arrives.
+  # Options:
+  #   - "poweroff"   (ACPI S5 soft-off, recommended for zero power consumption)
+  #   - "suspend"    (ACPI S3 suspend to RAM)
+  #   - "hibernate"  (ACPI S4 suspend to disk)
+  power_action: "poweroff"
+
+# Daily circadian operating schedule
+circadian:
+  # Scheduled sleep transition time in 24-hour HH:MM format.
+  sleep_at: "00:00"
+
+  # Scheduled wake transition time in 24-hour HH:MM format.
+  # Must maintain at least 180 seconds of safety buffer from sleep_at.
+  wake_at: "08:00"
+
+  # Days of the week when circadian schedule is active.
+  # Options: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+  days:
+    - "Mon"
+    - "Tue"
+    - "Wed"
+    - "Thu"
+    - "Fri"
+    - "Sat"
+    - "Sun"
+
+# Morning workload boot orchestration (arkon up / arkon-boot.service)
+startup:
+  # Workload provider engine. Currently supported: "docker-compose".
+  # Extensible interfaces available for Podman and Kubernetes.
+  provider: "docker-compose"
+
+  # Execution timeout in seconds across startup targets.
+  timeout_seconds: 120
+
+  # Compose stack directories to bring up on system boot.
+  compose_stacks:
+    - path: "/home/adrian/deployment-stack"
+
+  # Sequential profile boot order. If omitted, defaults to reversing teardown.profile_order.
+  profiles:
+    - "proxy"
+    - "infra"
+    - "apps"
+
+# Nightly workload teardown pipeline (arkon sleep / arkon-sleep.service)
+teardown:
+  # Workload provider engine. Currently supported: "docker-compose".
+  provider: "docker-compose"
+
+  # Maximum graceful shutdown timeout in seconds per profile tier.
+  timeout_seconds: 60
+
+  # Compose stack directories to target during teardown.
+  compose_stacks:
+    - path: "/home/adrian/deployment-stack"
+
+  # Strict sequential shutdown order. Stateful databases should be stopped after apps.
+  # Arkon passes '--profile "*"' in residual cleanup to ensure all services stop.
+  profile_order:
+    - "apps"
+    - "infra"
+    - "proxy"
+
+# Pluggable lifecycle hooks for host-specific maintenance commands
+hooks:
+  # Executed immediately before the container teardown pipeline begins.
+  pre_teardown: []
+
+  # Executed after profile teardown and residual container stops.
+  post_teardown:
+    - name: "filesystem-sync"
+      command: "sync"
+      timeout_seconds: 10
+      ignore_errors: false
+
+  # Executed right before hardware RTC arming and host poweroff.
+  pre_sleep: []
+
+  # Executed during morning boot before starting container stacks.
+  # Ideal for unmounting degrading disks, running health checks, or preparing mounts.
+  post_wake:
+    - name: "detach-failing-drive"
+      command: "/home/adrian/deployment-stack/scripts/manage-failing-hdd.sh disable"
+      timeout_seconds: 15
+      ignore_errors: true
+
+# Operator maintenance locks and daytime operational protection
+inhibition:
+  # Default duration for manual inhibition locks (e.g. "30m", "2h", "4h").
+  default_duration: "2h"
+
+  # When enabled, manually running "arkon sleep" during daytime operational hours
+  # aborts with exit code 2 unless overridden via "--force".
+  daytime_protection: true
+
+  # Optional explicit daytime protection window boundaries.
+  # If omitted, daytime_start defaults to circadian.wake_at and daytime_end to circadian.sleep_at.
+  daytime_start: "08:00"
+  daytime_end: "00:00"

@@ -25,19 +25,19 @@ A complete architectural blueprint and technical specification for **Arkon**, de
 - [[09-13] Core Seam Hardening, Spec Reconciliation, Exit Codes & Verbose Diagnostics](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/): Resolved PR #14 review findings across HostEnvironment seam integrity, state corruption quarantine recovery, configurable daytime windows, binary-level exit code assertions (codes 2, 3, 4), and verbose diagnostic logging to stderr.
 - [[14] Catch-All Workload Teardown via Profile Wildcard](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/14-compose-stop-all-profiles.md): Pass '--profile "*"' in StopResidual to ensure untracked or profile-tagged containers across any profile (such as proxy services) are stopped cleanly before poweroff.
 - [[15] Declarative Startup Orchestrator & Boot Systemd Unit](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/15-startup-orchestration-and-boot-unit.md): Add declarative 'startup:' manifest block, 'arkon up' CLI command for boot sequences, and compile/install 'arkon-boot.service' on multi-user.target to unify full boot-to-shutdown operations into arkon.yaml.
+- [[16] Status Command Startup & Hooks Visibility](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/16-status-startup-and-hooks-visibility.md): Extend arkon status to display workload startup pipeline, boot unit status, and configured lifecycle hooks across terminal left-rail layout and typed JSON envelope.
+- [[17] Local CI Parity & Pre-Push Hook Automation](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/17-git-hooks-ci-parity.md): Implement scripts/check-ci.sh mirroring GitHub Actions CI, fast pre-commit formatting and deslop checks, and pre-push hook gating upstream delivery.
+- [[18] GoReleaser Packaging & Release Automation](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/18-goreleaser-and-release-automation.md): Configure GoReleaser v2, tag-triggered release workflow, static cross-compilation with ldflags version stamping, .deb packaging, and curl installer.
+- [[19] Workload Provider Extensibility Documentation & Roadmap](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/19-workload-provider-extensibility-docs.md): Document TeardownProvider and StartupProvider interfaces in docs/architecture/workload-providers.md and publish community contribution issues (#21, #22, #23).
+- [[20] Documentation & Manifest Alignment](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/20-documentation-and-manifest-alignment.md): Align README.md with full quickstart, installation instructions, live status preview, and provide annotated reference manifest arkon.example.yaml.
 
 ## Active tickets
 
-- [[16] Status Command Startup & Hooks Visibility](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/16-status-startup-and-hooks-visibility.md)
-- [[17] Local CI Parity & Pre-Push Hook Automation](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/17-git-hooks-ci-parity.md)
-- [[18] GoReleaser Packaging & Release Automation](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/18-goreleaser-and-release-automation.md)
-- [[19] Workload Provider Extensibility Documentation & Roadmap](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/19-workload-provider-extensibility-docs.md)
-- [[20] Documentation & Manifest Alignment](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/20-documentation-and-manifest-alignment.md)
+None.
 
 ## Not yet specified
 
-- **Pluggable Workload Providers (Podman, K8s, systemd slices)**: Extend the workload teardown abstraction beyond Docker Compose to support rootless Podman compose pods, local single-node Kubernetes clusters (e.g., k3s / kubelet drain), and systemd scope/slice units.
-- **Automated Update & Binary Distribution**: Packaging Arkon as Debian packages (`.deb`) and standalone GitHub release binaries via GoReleaser.
+- **Automated In-Binary Self Update (`arkon update`)**: Implement in-binary self-update command pulling latest assets from GitHub Releases (designed in ADR 0002).
 - **Healthcheck & Boot Diagnostics**: Post-boot verification commands testing network connectivity and container health before marking the circadian wake cycle successful.
 
 ## Out of scope
