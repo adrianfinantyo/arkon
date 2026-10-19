@@ -126,6 +126,18 @@ func (m *Manifest) Validate() error {
 		}
 	}
 
+	if m.Inhibition.DaytimeStart != "" {
+		if _, _, err := ParseTimeHM(m.Inhibition.DaytimeStart); err != nil {
+			addErr("inhibition.daytime_start", fmt.Sprintf("invalid time format %q, expected HH:MM (24-hour)", m.Inhibition.DaytimeStart))
+		}
+	}
+
+	if m.Inhibition.DaytimeEnd != "" {
+		if _, _, err := ParseTimeHM(m.Inhibition.DaytimeEnd); err != nil {
+			addErr("inhibition.daytime_end", fmt.Sprintf("invalid time format %q, expected HH:MM (24-hour)", m.Inhibition.DaytimeEnd))
+		}
+	}
+
 	if len(errors) > 0 {
 		return &ValidationError{Errors: errors}
 	}

@@ -82,6 +82,8 @@ func (h *HookConfig) UnmarshalYAML(value *yaml.Node) error {
 type InhibitionConfig struct {
 	DefaultDuration   string `yaml:"default_duration" json:"default_duration"`
 	DaytimeProtection *bool  `yaml:"daytime_protection" json:"daytime_protection"`
+	DaytimeStart      string `yaml:"daytime_start,omitempty" json:"daytime_start,omitempty"`
+	DaytimeEnd        string `yaml:"daytime_end,omitempty" json:"daytime_end,omitempty"`
 }
 
 // FieldError records a validation failure against a specific manifest field.

@@ -570,3 +570,58 @@ func TestLoadFileWithSyntaxError(t *testing.T) {
 		t.Fatal("expected syntax error on malformed YAML")
 	}
 }
+
+func TestDaytimeWindowConfiguration(t *testing.T) {
+	t.Run("defaults inherit from circadian times", func(t *testing.T) {
+		m, err := manifest.ParseAndValidate([]byte(sampleValidYAML))
+		if err != nil {
+			t.Fatalf("unexpected validation error: %v", err)
+		}
+		if m.Inhibition.DaytimeStart != "07:00" {
+			t.Fatalf("expected DaytimeStart to default to 07:00, got %q", m.Inhibition.DaytimeStart)
+		}
+		if m.Inhibition.DaytimeEnd != "23:00" {
+			t.Fatalf("expected DaytimeEnd to default to 23:00, got %q", m.Inhibition.DaytimeEnd)
+		}
+	})
+
+	t.Run("explicit daytime window parsed cleanly", func(t *testing.T) {
+		yamlData := sampleValidYAML + `  daytime_start: "08:30"
+  daytime_end: "21:30"
+`
+		m, err := manifest.ParseAndValidate([]byte(yamlData))
+		if err != nil {
+			t.Fatalf("unexpected validation error: %v", err)
+		}
+		if m.Inhibition.DaytimeStart != "08:30" {
+			t.Fatalf("expected DaytimeStart 08:30, got %q", m.Inhibition.DaytimeStart)
+		}
+		if m.Inhibition.DaytimeEnd != "21:30" {
+			t.Fatalf("expected DaytimeEnd 21:30, got %q", m.Inhibition.DaytimeEnd)
+		}
+	})
+
+	t.Run("invalid daytime_start rejected", func(t *testing.T) {
+		yamlData := sampleValidYAML + `  daytime_start: "25:00"
+`
+		_, err := manifest.ParseAndValidate([]byte(yamlData))
+		if err == nil {
+			t.Fatal("expected invalid daytime_start to be rejected")
+		}
+		if !strings.Contains(err.Error(), "inhibition.daytime_start") {
+			t.Fatalf("expected error mentioning inhibition.daytime_start, got: %v", err)
+		}
+	})
+
+	t.Run("invalid daytime_end rejected", func(t *testing.T) {
+		yamlData := sampleValidYAML + `  daytime_end: "invalid"
+`
+		_, err := manifest.ParseAndValidate([]byte(yamlData))
+		if err == nil {
+			t.Fatal("expected invalid daytime_end to be rejected")
+		}
+		if !strings.Contains(err.Error(), "inhibition.daytime_end") {
+			t.Fatalf("expected error mentioning inhibition.daytime_end, got: %v", err)
+		}
+	})
+}

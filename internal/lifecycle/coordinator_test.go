@@ -772,3 +772,55 @@ func TestCoordinator_PostWakeOnSuspend(t *testing.T) {
 		t.Fatalf("expected post-wake hook to execute after suspend resume, got commands: %v", executed)
 	}
 }
+
+func TestCoordinator_DaytimeWindowOverride(t *testing.T) {
+	// Circadian is 07:00 wake, 23:00 sleep.
+	// Explicit daytime window is 09:00 to 17:00.
+	m := validTestManifest()
+	m.Inhibition.DaytimeStart = "09:00"
+	m.Inhibition.DaytimeEnd = "17:00"
+
+	// 1. Test at 08:00 (outside 09:00-17:00, allowed)
+	timeAt8AM := time.Date(2026, 10, 19, 8, 0, 0, 0, time.UTC)
+	memAt8, _ := setupTestEnv(t, timeAt8AM)
+	coordTeardown := teardown.NewCoordinator(memAt8, m, teardown.WithProvider(&mockProvider{}))
+	stateMgr := state.NewManager(t.TempDir(), state.WithClock(func() time.Time { return timeAt8AM }))
+
+	c8 := lifecycle.NewCoordinator(memAt8, m,
+		lifecycle.WithClock(func() time.Time { return timeAt8AM }),
+		lifecycle.WithTeardownCoordinator(coordTeardown),
+		lifecycle.WithStateManager(stateMgr),
+		lifecycle.WithDryRun(true),
+	)
+
+	res, err := c8.Execute(context.Background())
+	if err != nil {
+		t.Fatalf("expected sleep to be allowed at 08:00 with daytime_start 09:00, got: %v", err)
+	}
+	if !res.DryRun {
+		t.Fatal("expected DryRun to be true")
+	}
+
+	// 2. Test at 10:00 (inside 09:00-17:00, blocked)
+	timeAt10AM := time.Date(2026, 10, 19, 10, 0, 0, 0, time.UTC)
+	memAt10, _ := setupTestEnv(t, timeAt10AM)
+	coordTeardown10 := teardown.NewCoordinator(memAt10, m, teardown.WithProvider(&mockProvider{}))
+	stateMgr10 := state.NewManager(t.TempDir(), state.WithClock(func() time.Time { return timeAt10AM }))
+
+	c10 := lifecycle.NewCoordinator(memAt10, m,
+		lifecycle.WithClock(func() time.Time { return timeAt10AM }),
+		lifecycle.WithTeardownCoordinator(coordTeardown10),
+		lifecycle.WithStateManager(stateMgr10),
+		lifecycle.WithDryRun(true),
+	)
+
+	_, err = c10.Execute(context.Background())
+	if err == nil {
+		t.Fatal("expected sleep to be blocked at 10:00 within daytime window 09:00-17:00")
+	}
+	var inErr *lifecycle.InhibitionError
+	if !errors.As(err, &inErr) || inErr.Result.Code != "ERR_DAYTIME_PROTECTION" {
+		t.Fatalf("expected ERR_DAYTIME_PROTECTION, got: %v", err)
+	}
+}
+

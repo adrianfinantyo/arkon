@@ -4,17 +4,17 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Add `DaytimeStart` and `DaytimeEnd` string fields to `manifest.InhibitionConfig` (`daytime_start`, `daytime_end`).
-- [ ] In `manifest.ApplyDefaults`, populate `DaytimeStart` and `DaytimeEnd` from `circadian.wake_at` and `circadian.sleep_at` when omitted.
-- [ ] Add validation in `manifest.Validate` enforcing valid 24h `HH:MM` time formats on `daytime_start` and `daytime_end` when explicitly specified.
-- [ ] Update `state.DaytimeConfig` and `lifecycle.Coordinator` to use the configured daytime window boundaries.
-- [ ] Reconcile `.scratch/arkon/spec.md`:
+- [x] Add `DaytimeStart` and `DaytimeEnd` string fields to `manifest.InhibitionConfig` (`daytime_start`, `daytime_end`).
+- [x] In `manifest.ApplyDefaults`, populate `DaytimeStart` and `DaytimeEnd` from `circadian.wake_at` and `circadian.sleep_at` when omitted.
+- [x] Add validation in `manifest.Validate` enforcing valid 24h `HH:MM` time formats on `daytime_start` and `daytime_end` when explicitly specified.
+- [x] Update `state.DaytimeConfig` and `lifecycle.Coordinator` to use the configured daytime window boundaries.
+- [x] Reconcile `.scratch/arkon/spec.md`:
   - Document `daytime_start` and `daytime_end` in the manifest schema.
   - Document `host.power_action` as the canonical location for host power transitions.
   - Set `rtc_device` default to `/sys/class/rtc/rtc0`.
   - Document `arkon wake` subcommand for executing post-wake lifecycle hooks.
   - Document scalar hook shorthand (`- "sync"`) alongside structured hook objects.
   - Clarify that hostname is discovered from host environment rather than statically configured in YAML.
-- [ ] Unit and integration tests verify explicit daytime window configuration and default inheritance.
+- [x] Unit and integration tests verify explicit daytime window configuration and default inheritance.

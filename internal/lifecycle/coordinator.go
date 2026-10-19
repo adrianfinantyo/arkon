@@ -193,9 +193,20 @@ func (c *Coordinator) Execute(ctx context.Context) (*SleepResult, error) {
 		daytimeProtected = *c.manifest.Inhibition.DaytimeProtection
 	}
 
+	daytimeStart := c.manifest.Inhibition.DaytimeStart
+	if daytimeStart == "" {
+		daytimeStart = c.manifest.Circadian.WakeAt
+	}
+	daytimeEnd := c.manifest.Inhibition.DaytimeEnd
+	if daytimeEnd == "" {
+		daytimeEnd = c.manifest.Circadian.SleepAt
+	}
+
 	daytimeCfg := state.DaytimeConfig{
 		WakeAt:            c.manifest.Circadian.WakeAt,
 		SleepAt:           c.manifest.Circadian.SleepAt,
+		DaytimeStart:      daytimeStart,
+		DaytimeEnd:        daytimeEnd,
 		DaytimeProtection: daytimeProtected,
 	}
 

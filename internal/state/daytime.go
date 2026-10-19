@@ -11,6 +11,8 @@ import (
 type DaytimeConfig struct {
 	WakeAt            string `yaml:"wake_at" json:"wake_at"`
 	SleepAt           string `yaml:"sleep_at" json:"sleep_at"`
+	DaytimeStart      string `yaml:"daytime_start,omitempty" json:"daytime_start,omitempty"`
+	DaytimeEnd        string `yaml:"daytime_end,omitempty" json:"daytime_end,omitempty"`
 	DaytimeProtection bool   `yaml:"daytime_protection" json:"daytime_protection"`
 }
 
@@ -66,8 +68,17 @@ func EvaluateSleepAllowed(now time.Time, daytime DaytimeConfig, activeLocks []In
 		return SleepCheckResult{Inhibited: false}
 	}
 
-	if daytime.DaytimeProtection && daytime.WakeAt != "" && daytime.SleepAt != "" {
-		isDaytime, err := IsDaytimeOperational(now, daytime.WakeAt, daytime.SleepAt)
+	start := daytime.DaytimeStart
+	if start == "" {
+		start = daytime.WakeAt
+	}
+	end := daytime.DaytimeEnd
+	if end == "" {
+		end = daytime.SleepAt
+	}
+
+	if daytime.DaytimeProtection && start != "" && end != "" {
+		isDaytime, err := IsDaytimeOperational(now, start, end)
 		if err == nil && isDaytime {
 			return SleepCheckResult{
 				Inhibited: true,
@@ -75,8 +86,8 @@ func EvaluateSleepAllowed(now time.Time, daytime DaytimeConfig, activeLocks []In
 				Reason: fmt.Sprintf(
 					"Refusing sleep: current time %s is within daytime operational window (wake_at: %s, sleep_at: %s). Pass --force to override.",
 					now.Format("15:04"),
-					daytime.WakeAt,
-					daytime.SleepAt,
+					start,
+					end,
 				),
 			}
 		}

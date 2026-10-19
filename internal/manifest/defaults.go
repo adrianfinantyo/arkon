@@ -42,6 +42,12 @@ func (m *Manifest) ApplyDefaults() {
 		defaultTrue := true
 		m.Inhibition.DaytimeProtection = &defaultTrue
 	}
+	if m.Inhibition.DaytimeStart == "" {
+		m.Inhibition.DaytimeStart = m.Circadian.WakeAt
+	}
+	if m.Inhibition.DaytimeEnd == "" {
+		m.Inhibition.DaytimeEnd = m.Circadian.SleepAt
+	}
 }
 
 func applyHookDefaults(hooks []HookConfig) {
