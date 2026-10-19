@@ -42,6 +42,21 @@ Arkon interacts with low-level Linux kernel interfaces (`/sys/class/rtc/rtc0/wak
 
 ---
 
+## Pluggable Workload Providers
+
+Arkon separates host power lifecycles from container and workload engines using two pluggable interfaces:
+* `teardown.TeardownProvider`: Orchestrates phased profile stopping and untagged workload teardown before host sleep.
+* `startup.StartupProvider`: Orchestrates post-wake service bring-up.
+
+While Docker Compose is the default built-in provider, contributions for additional engines are warmly welcomed:
+* **Rootless Podman Compose:** Native rootless container teardown and startup.
+* **Single-Node Kubernetes / K3s:** Safe node cordon and drain before sleep, uncordon after wake.
+* **Systemd Target Slices:** Stopping and starting bare-metal services partitioned by systemd slices.
+
+For architectural details, method contracts, and a step-by-step contribution walkthrough, read [Pluggable Workload Providers](docs/architecture/workload-providers.md). Look for open issues labeled `enhancement` and `help wanted` to claim an implementation.
+
+---
+
 ## Reporting Hardware Compatibility
 
 Because ACPI sleep states (S3/S5) and motherboard RTC implementations vary widely between vendors, community hardware reports are invaluable.
