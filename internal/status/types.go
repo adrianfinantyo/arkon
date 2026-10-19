@@ -14,6 +14,8 @@ type StatusData struct {
 	CircadianTimer  CircadianStatus        `json:"circadian_timer"`
 	InhibitionLocks []state.InhibitionLock `json:"inhibition_locks"`
 	Teardown        TeardownStatus         `json:"teardown"`
+	Startup         StartupStatus          `json:"startup"`
+	Hooks           HooksStatus            `json:"hooks"`
 }
 
 // RTCStatus represents the hardware real-time clock wakealarm state.
@@ -43,4 +45,22 @@ type TeardownStatus struct {
 	ProfileOrder []string `json:"profile_order"`
 	StackCount   int      `json:"stack_count"`
 	Stacks       []string `json:"stacks,omitempty"`
+}
+
+// StartupStatus represents the workload startup configuration upon boot.
+type StartupStatus struct {
+	Provider    string   `json:"provider"`
+	Profiles    []string `json:"profiles"`
+	StackCount  int      `json:"stack_count"`
+	Stacks      []string `json:"stacks,omitempty"`
+	BootUnit    string   `json:"boot_unit"`
+	BootEnabled bool     `json:"boot_enabled"`
+}
+
+// HooksStatus represents configured lifecycle hook names by phase.
+type HooksStatus struct {
+	PreTeardown  []string `json:"pre_teardown"`
+	PostTeardown []string `json:"post_teardown"`
+	PreSleep     []string `json:"pre_sleep"`
+	PostWake     []string `json:"post_wake"`
 }

@@ -1,37 +1,43 @@
 #!/usr/bin/env bash
 set -e
 
-# Pre-commit hook: Run deslop checks against staged changes enforcing .agents/rules/deslop.md
+# Pre-commit hook: Run fast checks (formatting and anti-slop)
 
-# Allow bypassing via environment variable
-if [ "${SKIP_DESLOP:-0}" = "1" ]; then
-    echo "[git-hook] SKIP_DESLOP is set. Skipping deslop checks."
+if [ "${SKIP_PRE_COMMIT:-0}" = "1" ] || [ "${SKIP_DESLOP:-0}" = "1" ]; then
+    echo "[git-hook] Bypass flag set. Skipping pre-commit checks."
     exit 0
 fi
 
-# Locate repo root
 REPO_ROOT="$(git rev-parse --show-toplevel)"
-DESLOP_SCRIPT="$REPO_ROOT/scripts/deslop.py"
-RULES_FILE="$REPO_ROOT/.agents/rules/deslop.md"
+cd "$REPO_ROOT"
 
+# Fast check 1: Go formatting
+UNFORMATTED="$(go fmt ./...)"
+if [ -n "$UNFORMATTED" ]; then
+    echo ""
+    echo "[git-hook] ❌ Commit blocked: Unformatted Go files detected:"
+    echo "$UNFORMATTED"
+    echo "[git-hook] Run 'go fmt ./...' to format these files."
+    echo "[git-hook] (To bypass this check in an emergency, use 'git commit --no-verify')"
+    exit 1
+fi
+
+# Fast check 2: Anti-slop guidelines
+DESLOP_SCRIPT="$REPO_ROOT/scripts/deslop.py"
 if [ ! -f "$DESLOP_SCRIPT" ]; then
     if [ -f "$REPO_ROOT/.agents/skills/deslop/scripts/deslop.py" ]; then
         DESLOP_SCRIPT="$REPO_ROOT/.agents/skills/deslop/scripts/deslop.py"
     else
-        echo "[git-hook] Warning: deslop script not found. Skipping check."
+        echo "[git-hook] Warning: deslop script not found. Skipping deslop check."
         exit 0
     fi
 fi
 
-# Run deslop check on staged changes
-python3 "$DESLOP_SCRIPT" --staged --rules "$RULES_FILE"
-EXIT_CODE=$?
-
-if [ $EXIT_CODE -ne 0 ]; then
+if ! python3 "$DESLOP_SCRIPT" --all --force; then
     echo ""
-    echo "[git-hook] ❌ Commit blocked: AI slop detected in staged changes."
-    echo "[git-hook] Please review .agents/rules/deslop.md and fix the issues above."
-    echo "[git-hook] (To bypass this check in an emergency, use 'git commit --no-verify' or 'SKIP_DESLOP=1 git commit')"
+    echo "[git-hook] ❌ Commit blocked: Anti-slop check failed."
+    echo "[git-hook] Review .agents/rules/deslop.md and fix the issues above."
+    echo "[git-hook] (To bypass this check in an emergency, use 'git commit --no-verify' or 'SKIP_PRE_COMMIT=1 git commit')"
     exit 1
 fi
 

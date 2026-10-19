@@ -465,9 +465,12 @@ func TestStatusCommandText(t *testing.T) {
 		"● Circadian Schedule",
 		"● Hardware RTC Wakealarm",
 		"● Workload Teardown Pipeline",
+		"● Workload Startup Pipeline",
+		"● Lifecycle Hooks",
 		"● Maintenance Locks",
 		"  Host:        testhost",
 		"  Timezone:",
+		"Hooks: None configured",
 	}
 	for _, sub := range expectedSubstrings {
 		if !strings.Contains(out, sub) {
@@ -506,6 +509,80 @@ func TestStatusCommandJSON(t *testing.T) {
 	}
 	if dataMap["host_power_state"] != "ACPI S0 (Operational Active)" {
 		t.Errorf("expected host_power_state ACPI S0, got %v", dataMap["host_power_state"])
+	}
+
+	startupMap, ok := dataMap["startup"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected startup object in envelope, got %T", dataMap["startup"])
+	}
+	if startupMap["provider"] != "docker-compose" {
+		t.Errorf("expected startup provider docker-compose, got %v", startupMap["provider"])
+	}
+	if startupMap["boot_unit"] != "inactive" {
+		t.Errorf("expected unmocked boot_unit inactive, got %v", startupMap["boot_unit"])
+	}
+
+	hooksMap, ok := dataMap["hooks"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected hooks object in envelope, got %T", dataMap["hooks"])
+	}
+	if _, ok := hooksMap["post_wake"]; !ok {
+		t.Errorf("expected post_wake field in hooks map")
+	}
+}
+
+func TestStatusCommandWithStartupAndHooks(t *testing.T) {
+	mem := env.NewMemEnv()
+	mem.Files["/etc/hostname"] = []byte("srv-komsos\n")
+	configContent := `version: "1"
+host:
+  timezone: "UTC"
+circadian:
+  sleep_at: "23:00"
+  wake_at: "07:00"
+teardown:
+  profile_order:
+    - apps
+    - infra
+startup:
+  profiles:
+    - infra
+    - apps
+hooks:
+  pre_teardown:
+    - name: backup-db
+      command: /usr/local/bin/backup.sh
+  post_wake:
+    - name: detach-failing-drive
+      command: /usr/local/bin/check-drives.sh
+`
+	mem.Files["/etc/arkon/arkon.yaml"] = []byte(configContent)
+	mem.ExecHandler = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		if name == "systemctl" && len(args) == 2 && args[0] == "is-enabled" && args[1] == "arkon-boot.service" {
+			return []byte("enabled\n"), nil
+		}
+		return nil, nil
+	}
+
+	runner, stdout, stderr := newTestRunner(mem)
+	code := runner.Run(context.Background(), []string{"-c", "/etc/arkon/arkon.yaml", "status"})
+	if code != ExitOK {
+		t.Fatalf("expected exit code %d, got %d. stderr: %s", ExitOK, code, stderr.String())
+	}
+
+	out := stdout.String()
+	expected := []string{
+		"● Workload Startup Pipeline",
+		"(arkon-boot.service enabled)",
+		"Progression: post_wake hooks → infra → apps",
+		"● Lifecycle Hooks",
+		"Pre-Teardown:  backup-db",
+		"Post-Wake:     detach-failing-drive",
+	}
+	for _, exp := range expected {
+		if !strings.Contains(out, exp) {
+			t.Errorf("expected status output to contain %q, got:\n%s", exp, out)
+		}
 	}
 }
 

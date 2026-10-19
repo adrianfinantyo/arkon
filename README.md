@@ -62,43 +62,88 @@ All CLI commands support `--json` output, batch-safe execution, and clean exit c
 
 ---
 
+## Installation
+
+### 1. Standalone Installer (Recommended)
+
+Install the latest binary directly to `/usr/local/bin/arkon`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/adrianfinantyo/arkon/main/scripts/install.sh | sudo bash
+```
+
+### 2. Debian / Ubuntu Package (`.deb`)
+
+Download the `.deb` asset from [GitHub Releases](https://github.com/adrianfinantyo/arkon/releases) and install via `dpkg`:
+
+```bash
+sudo dpkg -i arkon_*_linux_amd64.deb   # on x86_64
+sudo dpkg -i arkon_*_linux_arm64.deb   # on aarch64
+```
+
+### 3. Build From Source
+
+```bash
+git clone https://github.com/adrianfinantyo/arkon.git
+cd arkon
+go build -ldflags="-s -w" -o bin/arkon ./cmd/arkon
+sudo cp bin/arkon /usr/local/bin/arkon
+```
+
+---
+
 ## Quickstart
 
 ### 1. Define your manifest (`arkon.yaml`)
+
+Create `/etc/arkon/arkon.yaml` (or `./arkon.yaml` in your compose directory):
 
 ```yaml
 version: "1"
 
 host:
   timezone: "Asia/Jakarta"
-  rtc_device: "/sys/class/rtc/rtc0"
+  rtc_device: "/sys/class/rtc/rtc0/wakealarm"
   power_action: "poweroff" # enum: poweroff (ACPI S5), suspend (ACPI S3), hibernate (ACPI S4)
 
 circadian:
-  sleep_at: "23:00"
-  wake_at: "07:00"
+  sleep_at: "00:00"
+  wake_at: "08:00"
   days: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
-teardown:
-  provider: "docker-compose" # enum: docker-compose, podman, command, systemd
-  timeout_seconds: 30
+startup:
+  provider: "docker-compose"
+  timeout_seconds: 120
   compose_stacks:
-    - path: "/opt/homelab"
-  profile_order:
-    - "workers"
-    - "web"
-    - "storage"
+    - path: "/home/adrian/deployment-stack"
+  profiles:
+    - "proxy"
+    - "infra"
+    - "apps"
 
-inhibition:
-  allow_user_locks: true
-  lock_dir: "/run/arkon/locks"
+teardown:
+  provider: "docker-compose"
+  timeout_seconds: 60
+  compose_stacks:
+    - path: "/home/adrian/deployment-stack"
+  profile_order:
+    - "apps"
+    - "infra"
+    - "proxy"
 
 hooks:
-  pre_sleep:
-    - name: "flush-storage-disks"
-      command: "/usr/bin/sync"
-      timeout: 10s
+  post_wake:
+    - name: "detach-failing-drive"
+      command: "/home/adrian/deployment-stack/scripts/manage-failing-hdd.sh disable"
+      timeout_seconds: 15
+      ignore_errors: true
+
+inhibition:
+  default_duration: "2h"
+  daytime_protection: true
 ```
+
+*A fully annotated reference configuration is available at [`arkon.example.yaml`](arkon.example.yaml).*
 
 ### 2. Compile and apply systemd units
 
@@ -106,7 +151,14 @@ hooks:
 sudo arkon apply
 ```
 
-Arkon validates the manifest syntax, creates `/etc/systemd/system/arkon-sleep.service`, `/etc/systemd/system/arkon-sleep.timer`, and validates the RTC wakealarm device before committing changes.
+Arkon compiles the declarative policy into native systemd units, validates unit syntax, and enables them atomically:
+* `arkon-sleep.service` + `arkon-sleep.timer`: Runs nightly shutdown (`arkon sleep`).
+* `arkon-boot.service`: Runs morning wake orchestration (`arkon up`), executing post-wake hooks before starting container profiles.
+
+Inspect units safely without root:
+```bash
+arkon apply --dry-run
+```
 
 ### 3. Inspect status
 
@@ -116,18 +168,63 @@ arkon status
 
 Output:
 ```text
-Host State:    ACTIVE
-Next Sleep:    Today at 23:00 (in 4h 12m)
-Next Wake:     Tomorrow at 07:00 (via /dev/rtc0)
-Active Locks:  None
-Systemd Units: arkon-sleep.timer (active/waiting)
+● ARKON HOST STATUS [ACPI S0 (Operational Active)]
+  Host:        srv-komsos (Pentium(R) Dual-Core CPU E5400 @ 2.70GHz (x86_64))
+  Timezone:    Asia/Jakarta (WIB, UTC+07:00)
+
+● Circadian Schedule (arkon-sleep.timer active)
+  Schedule:    Sleep @ 00:00  |  Wake @ 08:00
+  Next Action: Sleep (ACPI S5 Soft-Off), Tomorrow at 00:00:00 WIB (in 5h 46m)
+
+● Hardware RTC Wakealarm [DISABLED]
+  Device:      /sys/class/rtc/rtc0/wakealarm
+  Target:      None scheduled
+  Clock Mode:  /etc/adjtime (UTC)
+  Kernel Dirty: 576 kB (flushed to disk)
+
+● Workload Startup Pipeline (arkon-boot.service enabled)
+  Provider:    docker-compose (1 stack)
+  Progression: post_wake hooks → proxy → infra → apps
+  Stacks:      /home/adrian/deployment-stack
+
+● Workload Teardown Pipeline
+  Provider:    docker-compose (1 stack)
+  Progression: apps → infra → proxy → syscall.Sync()
+  Stacks:      /home/adrian/deployment-stack
+
+● Lifecycle Hooks
+  Post-Wake:   detach-failing-drive
+
+● Maintenance Locks
+  Inhibitions: None active (sleep will trigger as scheduled)
 ```
 
-### 4. Take a temporary lock
+### 4. Take a temporary maintenance lock
+
+Prevent scheduled nighttime sleep while running backups or imports:
 
 ```bash
-arkon inhibit --reason "Restic offsite backup" --duration 1h
+arkon inhibit --reason "Restic offsite backup" --duration 2h
 ```
+
+---
+
+## Pluggable Workload Providers & Roadmap
+
+Arkon uses an interface-driven design. Workload engines implement two clean seams:
+* `TeardownProvider`: Ordered tier stopping (`StopTier`) and residual catch-all (`StopResidual`).
+* `StartupProvider`: Ordered stack start (`StartStack`) across configured profiles.
+
+See [`docs/architecture/workload-providers.md`](docs/architecture/workload-providers.md) for interface specifications and implementation guides.
+
+| Workload Provider | Status | Target Use Case |
+| :--- | :--- | :--- |
+| **Docker Compose** | **Supported (v0.1.0)** | Standard homelab deployments using profile-tagged compose stacks. |
+| **Podman Compose** | In Roadmap | Rootless, daemonless container hosts ([Issue #21](https://github.com/adrianfinantyo/arkon/issues/21)). |
+| **Kubernetes / K3s** | In Roadmap | Node cordon and graceful pod draining (`kubectl drain`) ([Issue #22](https://github.com/adrianfinantyo/arkon/issues/22)). |
+| **Systemd Slices** | In Roadmap | Deactivating host systemd target slices (`systemctl stop homelab.target`) ([Issue #23](https://github.com/adrianfinantyo/arkon/issues/23)). |
+
+Contributions are welcome! If you run Podman, K3s, or custom workload engines in your homelab, please see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
@@ -155,3 +252,4 @@ Contributions are welcome! Please check out [CONTRIBUTING.md](CONTRIBUTING.md) f
 ## License
 
 [MIT](LICENSE) (c) 2026 Adrian Finantyo
+
