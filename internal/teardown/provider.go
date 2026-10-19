@@ -110,7 +110,7 @@ func (p *DockerComposeProvider) StopResidual(ctx context.Context, timeout time.D
 		if stack != "" {
 			args = append(args, "--project-directory", stack)
 		}
-		args = append(args, "stop")
+		args = append(args, "--profile", "*", "stop")
 		if timeout > 0 {
 			sec := int(timeout.Seconds())
 			if sec <= 0 {

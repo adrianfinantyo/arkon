@@ -26,7 +26,8 @@ A complete architectural blueprint and technical specification for **Arkon**, de
 
 ## Active tickets
 
-None. Core tickets 01 through 13 are resolved and merged into main.
+- [[14] Catch-All Workload Teardown via Profile Wildcard](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/14-compose-stop-all-profiles.md)
+- [[15] Declarative Startup Orchestrator & Boot Systemd Unit](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/15-startup-orchestration-and-boot-unit.md)
 
 ## Not yet specified
 
