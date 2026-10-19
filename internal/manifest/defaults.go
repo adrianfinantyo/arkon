@@ -12,6 +12,12 @@ func (m *Manifest) ApplyDefaults() {
 		m.Host.PowerAction = "poweroff"
 	}
 
+	if m.Circadian.SleepAt == "" {
+		m.Circadian.SleepAt = "23:00"
+	}
+	if m.Circadian.WakeAt == "" {
+		m.Circadian.WakeAt = "07:00"
+	}
 	if m.Circadian.Days == nil {
 		m.Circadian.Days = make([]string, len(DefaultDays))
 		copy(m.Circadian.Days, DefaultDays)

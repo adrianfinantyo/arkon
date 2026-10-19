@@ -109,7 +109,7 @@ func TestCoordinator_ExecuteFullPipeline(t *testing.T) {
 			}),
 		)
 
-		err := coord.Execute(context.Background())
+		err := coord.Teardown(context.Background())
 		if err != nil {
 			t.Fatalf("unexpected pipeline failure: %v", err)
 		}
@@ -179,7 +179,7 @@ func TestCoordinator_PreTeardownHookFailures(t *testing.T) {
 		m := setupTestManifest()
 		coord := teardown.NewCoordinator(mem, m, teardown.WithProvider(mock))
 
-		err := coord.Execute(context.Background())
+		err := coord.Teardown(context.Background())
 		if err == nil {
 			t.Fatal("expected teardown to fail when pre-teardown hook fails, got nil")
 		}
@@ -205,7 +205,7 @@ func TestCoordinator_PreTeardownHookFailures(t *testing.T) {
 		m.Hooks.PostTeardown[0].IgnoreErrors = true
 
 		coord := teardown.NewCoordinator(mem, m, teardown.WithProvider(mock))
-		err := coord.Execute(context.Background())
+		err := coord.Teardown(context.Background())
 		if err != nil {
 			t.Fatalf("expected teardown to succeed with ignore_errors true, got %v", err)
 		}
@@ -238,7 +238,7 @@ func TestCoordinator_TierStopFailures(t *testing.T) {
 		m := setupTestManifest()
 		coord := teardown.NewCoordinator(mem, m, teardown.WithProvider(mock))
 
-		err := coord.Execute(context.Background())
+		err := coord.Teardown(context.Background())
 		if err == nil {
 			t.Fatal("expected error on tier stop failure, got nil")
 		}
@@ -269,7 +269,7 @@ func TestCoordinator_TierStopFailures(t *testing.T) {
 		m := setupTestManifest()
 		coord := teardown.NewCoordinator(mem, m, teardown.WithProvider(mock))
 
-		err := coord.Execute(context.Background())
+		err := coord.Teardown(context.Background())
 		if err == nil {
 			t.Fatal("expected error on residual stop failure, got nil")
 		}
@@ -294,7 +294,7 @@ func TestCoordinator_PostTeardownHookFailures(t *testing.T) {
 		m := setupTestManifest()
 		coord := teardown.NewCoordinator(mem, m, teardown.WithProvider(mock))
 
-		err := coord.Execute(context.Background())
+		err := coord.Teardown(context.Background())
 		if err == nil {
 			t.Fatal("expected error when post-teardown hook fails, got nil")
 		}

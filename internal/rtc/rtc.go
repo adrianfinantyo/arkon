@@ -89,13 +89,26 @@ func WithLocation(loc *time.Location) Option {
 // NewManager initializes an RTC driver attached to the host environment seam.
 func NewManager(environment env.HostEnvironment, opts ...Option) *Manager {
 	m := &Manager{
-		env:       environment,
-		sysfsPath: DefaultSysfsPath,
-		adjPath:   DefaultAdjtimePath,
-		location:  time.Local,
+		env:      environment,
+		adjPath:  DefaultAdjtimePath,
+		location: time.Local,
 	}
 	for _, opt := range opts {
 		opt(m)
+	}
+	if m.sysfsPath == "" {
+		if environment != nil {
+			if val, ok := environment.LookupEnv("ARKON_RTC_DEVICE"); ok && val != "" {
+				m.sysfsPath = val
+			}
+		}
+		if m.sysfsPath == "" {
+			if val := os.Getenv("ARKON_RTC_DEVICE"); val != "" {
+				m.sysfsPath = val
+			} else {
+				m.sysfsPath = DefaultSysfsPath
+			}
+		}
 	}
 	return m
 }

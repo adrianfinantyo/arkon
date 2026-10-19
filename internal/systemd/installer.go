@@ -98,7 +98,16 @@ func (i *Installer) Install(ctx context.Context, m *manifest.Manifest, opts Inst
 		timerBackup = data
 	}
 
+	serviceTmp := serviceDest + ".tmp"
+	timerTmp := timerDest + ".tmp"
+	defer func() {
+		_ = i.Env.RemoveFile(serviceTmp)
+		_ = i.Env.RemoveFile(timerTmp)
+	}()
+
 	rollback := func() {
+		_ = i.Env.RemoveFile(serviceTmp)
+		_ = i.Env.RemoveFile(timerTmp)
 		if hadService {
 			_ = i.Env.WriteFile(serviceDest, serviceBackup, 0644)
 		} else {
@@ -113,13 +122,22 @@ func (i *Installer) Install(ctx context.Context, m *manifest.Manifest, opts Inst
 		_, _ = i.Env.Exec(ctx, "systemctl", "daemon-reload")
 	}
 
-	if err := i.Env.WriteFile(serviceDest, []byte(compiled.ServiceContent), 0644); err != nil {
+	if err := i.Env.WriteFile(serviceTmp, []byte(compiled.ServiceContent), 0644); err != nil {
 		rollback()
-		return nil, fmt.Errorf("failed to install service unit: %w", err)
+		return nil, fmt.Errorf("failed to write temporary service unit: %w", err)
 	}
-	if err := i.Env.WriteFile(timerDest, []byte(compiled.TimerContent), 0644); err != nil {
+	if err := i.Env.WriteFile(timerTmp, []byte(compiled.TimerContent), 0644); err != nil {
 		rollback()
-		return nil, fmt.Errorf("failed to install timer unit: %w", err)
+		return nil, fmt.Errorf("failed to write temporary timer unit: %w", err)
+	}
+
+	if err := i.Env.RenameFile(serviceTmp, serviceDest); err != nil {
+		rollback()
+		return nil, fmt.Errorf("failed to atomically commit service unit: %w", err)
+	}
+	if err := i.Env.RenameFile(timerTmp, timerDest); err != nil {
+		rollback()
+		return nil, fmt.Errorf("failed to atomically commit timer unit: %w", err)
 	}
 
 	if err := i.Env.SyncFS(); err != nil {

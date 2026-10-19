@@ -38,6 +38,10 @@ func (e *RealEnv) RemoveFile(path string) error {
 	return os.Remove(path)
 }
 
+func (e *RealEnv) RenameFile(oldPath, newPath string) error {
+	return os.Rename(oldPath, newPath)
+}
+
 func (e *RealEnv) Exec(ctx context.Context, name string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
 	return cmd.CombinedOutput()

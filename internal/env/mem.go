@@ -23,6 +23,7 @@ type MemEnv struct {
 	WriteHandler  func(path string, data []byte, perm os.FileMode) error
 	ReadHandler   func(path string) ([]byte, error)
 	RemoveHandler func(path string) error
+	RenameHandler func(oldPath, newPath string) error
 }
 
 // NewMemEnv creates an in-memory test environment.
@@ -93,6 +94,23 @@ func (m *MemEnv) RemoveFile(path string) error {
 		return os.ErrNotExist
 	}
 	delete(m.Files, path)
+	return nil
+}
+
+func (m *MemEnv) RenameFile(oldPath, newPath string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.RenameHandler != nil {
+		return m.RenameHandler(oldPath, newPath)
+	}
+
+	data, exists := m.Files[oldPath]
+	if !exists {
+		return os.ErrNotExist
+	}
+	delete(m.Files, oldPath)
+	m.Files[newPath] = data
 	return nil
 }
 

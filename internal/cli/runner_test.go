@@ -889,11 +889,12 @@ func TestSleepBlockedByActiveLockExit2(t *testing.T) {
 
 func TestSleepBlockedByDaytimeWindowExit2(t *testing.T) {
 	mem := env.NewMemEnv()
+	mem.CurrentTime = time.Date(2026, 10, 19, 14, 0, 0, 0, time.UTC)
 	runner, stdout, stderr := newTestRunner(mem)
 	runner.StateDir = t.TempDir()
 
-	// Attempt sleep with simulated daytime window -> should exit 2
-	code := runner.Run(context.Background(), []string{"sleep", "--simulate-daytime"})
+	// Attempt sleep during daytime window -> should exit 2
+	code := runner.Run(context.Background(), []string{"sleep"})
 	if code != ExitInhibited {
 		t.Fatalf("expected exit code %d, got %d", ExitInhibited, code)
 	}
@@ -904,7 +905,7 @@ func TestSleepBlockedByDaytimeWindowExit2(t *testing.T) {
 	// With JSON
 	stdout.Reset()
 	stderr.Reset()
-	code = runner.Run(context.Background(), []string{"sleep", "--simulate-daytime", "--json"})
+	code = runner.Run(context.Background(), []string{"sleep", "--json"})
 	if code != ExitInhibited {
 		t.Fatalf("expected exit code %d, got %d", ExitInhibited, code)
 	}
@@ -920,7 +921,7 @@ func TestSleepBlockedByDaytimeWindowExit2(t *testing.T) {
 	setupSleepMemEnv(mem)
 	stdout.Reset()
 	stderr.Reset()
-	code = runner.Run(context.Background(), []string{"sleep", "--simulate-daytime", "--force"})
+	code = runner.Run(context.Background(), []string{"sleep", "--force"})
 	if code != ExitOK {
 		t.Fatalf("expected exit code %d with --force, got %d. stderr: %s", ExitOK, code, stderr.String())
 	}
@@ -1537,4 +1538,134 @@ func TestSleepFailureExit1(t *testing.T) {
 			t.Errorf("expected ERR_SLEEP_FAILED, got %v", envErr.Error)
 		}
 	})
+}
+
+func TestWakeCommand(t *testing.T) {
+	mem := env.NewMemEnv()
+	manifestYAML := `
+version: "1"
+host:
+  timezone: "UTC"
+circadian:
+  sleep_at: "23:00"
+  wake_at: "07:00"
+teardown:
+  profile_order: ["apps"]
+hooks:
+  post_wake:
+    - name: "notify-wake"
+      command: "echo host is awake"
+`
+	mem.Files["/etc/arkon/arkon.yaml"] = []byte(manifestYAML)
+
+	var executed []string
+	mem.ExecHandler = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		executed = append(executed, name+" "+strings.Join(args, " "))
+		return []byte("ok"), nil
+	}
+
+	t.Run("human output", func(t *testing.T) {
+		runner, stdout, stderr := newTestRunner(mem)
+		runner.StateDir = t.TempDir()
+
+		code := runner.Run(context.Background(), []string{"wake"})
+		if code != ExitOK {
+			t.Fatalf("expected ExitOK (0), got %d. stderr: %s", code, stderr.String())
+		}
+		if !strings.Contains(stdout.String(), "Post-wake lifecycle sequence completed") {
+			t.Errorf("expected completion message in stdout: %s", stdout.String())
+		}
+	})
+
+	t.Run("json output", func(t *testing.T) {
+		runner, stdout, stderr := newTestRunner(mem)
+		runner.StateDir = t.TempDir()
+
+		code := runner.Run(context.Background(), []string{"wake", "--json"})
+		if code != ExitOK {
+			t.Fatalf("expected ExitOK (0), got %d. stderr: %s", code, stderr.String())
+		}
+		var envWake Envelope
+		if err := json.Unmarshal(stdout.Bytes(), &envWake); err != nil {
+			t.Fatalf("failed to decode envelope: %v", err)
+		}
+		if !envWake.Success {
+			t.Fatalf("expected success: true, got %v", envWake)
+		}
+	})
+
+	t.Run("failure on hook error", func(t *testing.T) {
+		memFail := env.NewMemEnv()
+		memFail.Files["/etc/arkon/arkon.yaml"] = []byte(manifestYAML)
+		memFail.ExecHandler = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+			return nil, errors.New("command failed")
+		}
+
+		runner, _, stderr := newTestRunner(memFail)
+		runner.StateDir = t.TempDir()
+
+		code := runner.Run(context.Background(), []string{"wake"})
+		if code != ExitGeneralError {
+			t.Fatalf("expected ExitGeneralError (1), got %d", code)
+		}
+		if !strings.Contains(stderr.String(), "post-wake hooks failed") {
+			t.Errorf("expected error message in stderr: %s", stderr.String())
+		}
+	})
+}
+
+func TestInhibitDefaultDurationFromManifest(t *testing.T) {
+	mem := env.NewMemEnv()
+	fixedTime := time.Date(2026, 10, 19, 12, 0, 0, 0, time.UTC)
+	mem.CurrentTime = fixedTime
+
+	manifestYAML := `
+version: "1"
+host:
+  timezone: "UTC"
+circadian:
+  sleep_at: "23:00"
+  wake_at: "07:00"
+teardown:
+  profile_order: ["apps"]
+inhibition:
+  default_duration: "4h"
+`
+	mem.Files["/etc/arkon/arkon.yaml"] = []byte(manifestYAML)
+
+	runner, stdout, stderr := newTestRunner(mem)
+	runner.StateDir = t.TempDir()
+
+	code := runner.Run(context.Background(), []string{"inhibit", "--json"})
+	if code != ExitOK {
+		t.Fatalf("expected ExitOK, got %d. stderr: %s", code, stderr.String())
+	}
+
+	var envLock Envelope
+	if err := json.Unmarshal(stdout.Bytes(), &envLock); err != nil {
+		t.Fatalf("failed to decode envelope: %v", err)
+	}
+	if !envLock.Success {
+		t.Fatalf("expected success: true, got %v", envLock)
+	}
+
+	lockMap, ok := envLock.Data.(map[string]any)
+	if !ok {
+		t.Fatalf("expected map[string]any for lock, got %T", envLock.Data)
+	}
+
+	// Lock expires_at should be 4 hours ahead (16:00 UTC)
+	expiresAtStr, ok := lockMap["expires_at"].(string)
+	if !ok {
+		t.Fatalf("expected string expires_at, got %v", lockMap["expires_at"])
+	}
+	expiresAt, err := time.Parse(time.RFC3339, expiresAtStr)
+	if err != nil {
+		t.Fatalf("failed to parse expires_at %q: %v", expiresAtStr, err)
+	}
+
+	expectedExpires := fixedTime.Add(4 * time.Hour)
+	if !expiresAt.Equal(expectedExpires) {
+		t.Fatalf("expected expiration at %v (4h), got %v", expectedExpires, expiresAt)
+	}
 }

@@ -234,6 +234,38 @@ func TestCircadianOvernightSchedule(t *testing.T) {
 	}
 }
 
+func TestCircadianSkipsInactiveDays(t *testing.T) {
+	mem := env.NewMemEnv()
+	// Friday Oct 23, 2026 at 23:30:00 UTC (after sleep_at 23:00, waiting for wake_at 07:00)
+	now := time.Date(2026, 10, 23, 23, 30, 0, 0, time.UTC)
+	mem.CurrentTime = now
+
+	m := &manifest.Manifest{
+		Version: "1",
+		Host: manifest.HostConfig{
+			Timezone: "UTC",
+		},
+		Circadian: manifest.CircadianConfig{
+			WakeAt:  "07:00",
+			SleepAt: "23:00",
+			Days:    []string{"Mon", "Tue", "Wed", "Thu", "Fri"},
+		},
+	}
+
+	data, err := Collect(context.Background(), mem, m, "/var/lib/arkon")
+	if err != nil {
+		t.Fatalf("Collect returned error: %v", err)
+	}
+
+	if !strings.Contains(data.CircadianTimer.NextAction, "Wake") {
+		t.Errorf("expected NextAction Wake, got %q", data.CircadianTimer.NextAction)
+	}
+	// Saturday and Sunday are skipped, so next wake must be Monday 2026-10-26
+	if !strings.Contains(data.CircadianTimer.NextTime, "2026-10-26 at 07:00:00 UTC") {
+		t.Errorf("expected NextTime to skip weekend to Monday 2026-10-26, got %q", data.CircadianTimer.NextTime)
+	}
+}
+
 func TestFormatStatusTextLayout(t *testing.T) {
 	data := &StatusData{
 		HostPowerState: "ACPI S0 (Operational Active)",

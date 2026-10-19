@@ -3,6 +3,7 @@ package lifecycle
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/adrianfinantyo/arkon/internal/env"
@@ -26,6 +27,10 @@ const (
 	EventRTCArmed               EventType = "rtc_armed"
 	EventPowerActionStarted     EventType = "power_action_started"
 	EventPowerActionCompleted   EventType = "power_action_completed"
+	EventPostWakeHooksStarted   EventType = "post_wake_hooks_started"
+	EventPostWakeHookStarted    EventType = "post_wake_hook_started"
+	EventPostWakeHookCompleted  EventType = "post_wake_hook_completed"
+	EventPostWakeHooksCompleted EventType = "post_wake_hooks_completed"
 	EventDryRunCompleted        EventType = "dry_run_completed"
 )
 
@@ -62,17 +67,15 @@ type SleepResult struct {
 
 // Coordinator orchestrates daytime checks, locks, hooks, teardown, RTC, and poweroff.
 type Coordinator struct {
-	env             env.HostEnvironment
-	manifest        *manifest.Manifest
-	stateMgr        *state.Manager
-	rtcMgr          *rtc.Manager
-	teardownCoord   *teardown.Coordinator
-	force           bool
-	dryRun          bool
-	simulateInhibit bool
-	simulateDaytime bool
-	clock           func() time.Time
-	eventListener   func(Event)
+	env           env.HostEnvironment
+	manifest      *manifest.Manifest
+	stateMgr      *state.Manager
+	rtcMgr        *rtc.Manager
+	teardownCoord *teardown.Coordinator
+	force         bool
+	dryRun        bool
+	clock         func() time.Time
+	eventListener func(Event)
 }
 
 // CoordinatorOption customizes coordinator behavior.
@@ -127,27 +130,18 @@ func WithEventListener(listener func(Event)) CoordinatorOption {
 	}
 }
 
-// WithSimulateInhibit injects a simulated active maintenance lock.
-func WithSimulateInhibit(sim bool) CoordinatorOption {
-	return func(c *Coordinator) {
-		c.simulateInhibit = sim
-	}
-}
-
-// WithSimulateDaytime forces daytime operational window evaluation during tests.
-func WithSimulateDaytime(sim bool) CoordinatorOption {
-	return func(c *Coordinator) {
-		c.simulateDaytime = sim
-	}
-}
-
 // NewCoordinator constructs a coordinator configured from host environment and manifest settings.
 func NewCoordinator(environment env.HostEnvironment, m *manifest.Manifest, opts ...CoordinatorOption) *Coordinator {
 	if m == nil {
 		m = &manifest.Manifest{}
-		m.ApplyDefaults()
 	}
-	ensureManifestDefaults(m)
+	m.ApplyDefaults()
+	if m.Host.Timezone == "" {
+		m.Host.Timezone = "UTC"
+	}
+	if len(m.Teardown.ProfileOrder) == 0 {
+		m.Teardown.ProfileOrder = []string{"apps", "infra"}
+	}
 
 	c := &Coordinator{
 		env:      environment,
@@ -198,10 +192,6 @@ func (c *Coordinator) Execute(ctx context.Context) (*SleepResult, error) {
 	if c.manifest.Inhibition.DaytimeProtection != nil {
 		daytimeProtected = *c.manifest.Inhibition.DaytimeProtection
 	}
-	if c.simulateDaytime {
-		daytimeProtected = true
-		nowInLoc = time.Date(nowInLoc.Year(), nowInLoc.Month(), nowInLoc.Day(), 14, 0, 0, 0, loc)
-	}
 
 	daytimeCfg := state.DaytimeConfig{
 		WakeAt:            c.manifest.Circadian.WakeAt,
@@ -210,20 +200,8 @@ func (c *Coordinator) Execute(ctx context.Context) (*SleepResult, error) {
 	}
 
 	activeLocks, err := c.stateMgr.ListLocks()
-	if err != nil && !c.simulateInhibit {
+	if err != nil {
 		return nil, fmt.Errorf("failed to list inhibition locks: %w", err)
-	}
-
-	if c.simulateInhibit && len(activeLocks) == 0 {
-		activeLocks = []state.InhibitionLock{
-			{
-				ID:        "inh-simulated",
-				Reason:    "Simulated maintenance override",
-				CreatedBy: "simulation",
-				ExpiresAt: now.Add(1 * time.Hour),
-				Remaining: "1h",
-			},
-		}
 	}
 
 	eval := state.EvaluateSleepAllowed(nowInLoc, daytimeCfg, activeLocks, c.force)
@@ -273,7 +251,14 @@ func (c *Coordinator) Execute(ctx context.Context) (*SleepResult, error) {
 		}, nil
 	}
 
-	// 4. Pre-sleep hooks
+	// 4. Workload teardown pipeline
+	c.emit(Event{Type: EventTeardownStarted})
+	if err := c.teardownCoord.Teardown(ctx); err != nil {
+		return nil, fmt.Errorf("workload teardown pipeline failed: %w", err)
+	}
+	c.emit(Event{Type: EventTeardownCompleted})
+
+	// 5. Pre-sleep hooks (execute AFTER workload teardown and filesystem buffer drain)
 	if len(c.manifest.Hooks.PreSleep) > 0 {
 		c.emit(Event{Type: EventPreSleepHooksStarted})
 		for _, hook := range c.manifest.Hooks.PreSleep {
@@ -285,13 +270,6 @@ func (c *Coordinator) Execute(ctx context.Context) (*SleepResult, error) {
 		}
 		c.emit(Event{Type: EventPreSleepHooksCompleted})
 	}
-
-	// 5. Workload teardown pipeline
-	c.emit(Event{Type: EventTeardownStarted})
-	if err := c.teardownCoord.Teardown(ctx); err != nil {
-		return nil, fmt.Errorf("workload teardown pipeline failed: %w", err)
-	}
-	c.emit(Event{Type: EventTeardownCompleted})
 
 	// 6. Hardware RTC wakealarm programming
 	if err := c.rtcMgr.SetWakeAlarm(deltaSec); err != nil {
@@ -312,6 +290,14 @@ func (c *Coordinator) Execute(ctx context.Context) (*SleepResult, error) {
 	}
 	c.emit(Event{Type: EventPowerActionCompleted})
 
+	// 8. Execute post-wake hooks when resuming from suspend or hibernate
+	action := strings.ToLower(c.manifest.Host.PowerAction)
+	if action == "suspend" || action == "hibernate" {
+		if err := c.ExecutePostWake(ctx); err != nil {
+			return nil, fmt.Errorf("post-wake hooks failed: %w", err)
+		}
+	}
+
 	return &SleepResult{
 		Status:          "completed",
 		DryRun:          false,
@@ -326,32 +312,25 @@ func (c *Coordinator) Execute(ctx context.Context) (*SleepResult, error) {
 	}, nil
 }
 
+// ExecutePostWake runs all configured post-wake hooks.
+func (c *Coordinator) ExecutePostWake(ctx context.Context) error {
+	if len(c.manifest.Hooks.PostWake) == 0 {
+		return nil
+	}
+	c.emit(Event{Type: EventPostWakeHooksStarted})
+	for _, hook := range c.manifest.Hooks.PostWake {
+		c.emit(Event{Type: EventPostWakeHookStarted, Message: hook.Name})
+		if err := teardown.ExecuteHook(ctx, c.env, hook); err != nil {
+			return fmt.Errorf("post-wake hook %q failed: %w", hook.Name, err)
+		}
+		c.emit(Event{Type: EventPostWakeHookCompleted, Message: hook.Name})
+	}
+	c.emit(Event{Type: EventPostWakeHooksCompleted})
+	return nil
+}
+
 func (c *Coordinator) emit(event Event) {
 	if c.eventListener != nil {
 		c.eventListener(event)
-	}
-}
-
-func ensureManifestDefaults(m *manifest.Manifest) {
-	if m.Circadian.SleepAt == "" {
-		m.Circadian.SleepAt = "23:00"
-	}
-	if m.Circadian.WakeAt == "" {
-		m.Circadian.WakeAt = "07:00"
-	}
-	if m.Host.Timezone == "" {
-		m.Host.Timezone = "UTC"
-	}
-	if len(m.Circadian.Days) == 0 {
-		m.Circadian.Days = manifest.DefaultDays
-	}
-	if m.Host.PowerAction == "" {
-		m.Host.PowerAction = "poweroff"
-	}
-	if m.Host.RTCDevice == "" {
-		m.Host.RTCDevice = "/sys/class/rtc/rtc0"
-	}
-	if len(m.Teardown.ProfileOrder) == 0 {
-		m.Teardown.ProfileOrder = []string{"apps", "infra"}
 	}
 }

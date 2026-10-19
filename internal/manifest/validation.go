@@ -3,6 +3,7 @@ package manifest
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -61,13 +62,13 @@ func (m *Manifest) Validate() error {
 	}
 
 	// 3. Circadian
-	sleepH, sleepM, sleepOK := parseTimeHM(m.Circadian.SleepAt)
-	if !sleepOK {
+	sleepH, sleepM, sleepErr := ParseTimeHM(m.Circadian.SleepAt)
+	if sleepErr != nil {
 		addErr("circadian.sleep_at", fmt.Sprintf("invalid time format %q, expected HH:MM (24-hour)", m.Circadian.SleepAt))
 	}
 
-	wakeH, wakeM, wakeOK := parseTimeHM(m.Circadian.WakeAt)
-	if !wakeOK {
+	wakeH, wakeM, wakeErr := ParseTimeHM(m.Circadian.WakeAt)
+	if wakeErr != nil {
 		addErr("circadian.wake_at", fmt.Sprintf("invalid time format %q, expected HH:MM (24-hour)", m.Circadian.WakeAt))
 	}
 
@@ -82,7 +83,7 @@ func (m *Manifest) Validate() error {
 	}
 
 	// Safety buffer check between sleep_at and wake_at
-	if sleepOK && wakeOK {
+	if sleepErr == nil && wakeErr == nil {
 		deltaSec := calculateSleepDurationSeconds(sleepH, sleepM, wakeH, wakeM)
 		if deltaSec < MinimumSafetyBufferSeconds {
 			addErr("circadian", fmt.Sprintf("circadian safety buffer violation: duration between sleep_at (%s) and wake_at (%s) is %ds, minimum required safety buffer is %ds",
@@ -145,16 +146,18 @@ func validateHooks(prefix string, hooks []HookConfig, addErr func(field, message
 	}
 }
 
-func parseTimeHM(s string) (int, int, bool) {
-	if len(s) != 5 || s[2] != ':' {
-		return 0, 0, false
+// ParseTimeHM parses an "HH:MM" 24-hour time string into hours and minutes.
+func ParseTimeHM(s string) (int, int, error) {
+	trimmed := strings.TrimSpace(s)
+	if len(trimmed) != 5 || trimmed[2] != ':' {
+		return 0, 0, fmt.Errorf("invalid time format %q, expected HH:MM (24-hour)", s)
 	}
-	h, err1 := strconv.Atoi(s[0:2])
-	m, err2 := strconv.Atoi(s[3:5])
+	h, err1 := strconv.Atoi(trimmed[0:2])
+	m, err2 := strconv.Atoi(trimmed[3:5])
 	if err1 != nil || err2 != nil || h < 0 || h > 23 || m < 0 || m > 59 {
-		return 0, 0, false
+		return 0, 0, fmt.Errorf("invalid time %q: hour must be 00-23 and minute must be 00-59", s)
 	}
-	return h, m, true
+	return h, m, nil
 }
 
 func calculateSleepDurationSeconds(sleepH, sleepM, wakeH, wakeM int) int {

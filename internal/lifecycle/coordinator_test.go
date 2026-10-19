@@ -493,9 +493,15 @@ func TestCoordinator_PreSleepHookFailure(t *testing.T) {
 		if !strings.Contains(err.Error(), "failing-hook") {
 			t.Fatalf("expected error mentioning hook name, got %v", err)
 		}
-		// Confirm teardown was never initiated
-		if len(mockP.stopTierCalls) != 0 {
-			t.Fatalf("workload teardown should not have run, got calls: %v", mockP.stopTierCalls)
+		// Confirm workload teardown completed before pre-sleep hook ran
+		if len(mockP.stopTierCalls) == 0 {
+			t.Fatalf("expected workload teardown to run before pre-sleep hooks")
+		}
+		// Confirm wakealarm was not programmed
+		alarmData, _ := mem.ReadFile("/sys/class/rtc/rtc0/wakealarm")
+		alarmStr := strings.TrimSpace(string(alarmData))
+		if alarmStr != "" && alarmStr != "0" {
+			t.Fatalf("wakealarm should not have been armed, got %q", alarmStr)
 		}
 	})
 
@@ -606,5 +612,163 @@ func TestCoordinator_RTCVerificationFailureAborts(t *testing.T) {
 	}
 	if !errors.Is(err, rtc.ErrAlarmRetentionFailed) && !strings.Contains(err.Error(), "retention") {
 		t.Fatalf("expected retention failure error, got %v", err)
+	}
+}
+
+func TestCoordinator_ExecutionOrder(t *testing.T) {
+	baseTime := time.Date(2026, 10, 19, 23, 0, 0, 0, time.UTC)
+	mem, _ := setupTestEnv(t, baseTime)
+	m := validTestManifest()
+
+	m.Hooks.PreSleep = []manifest.HookConfig{
+		{Name: "pre-sleep-hook", Command: "echo pre-sleep", TimeoutSeconds: 5},
+	}
+
+	var trace []string
+	mockP := &mockProvider{
+		stopTierFunc: func(ctx context.Context, tier string, timeout time.Duration) error {
+			trace = append(trace, "stop-tier:"+tier)
+			return nil
+		},
+		stopResidualFunc: func(ctx context.Context, timeout time.Duration) error {
+			trace = append(trace, "stop-residual")
+			return nil
+		},
+	}
+
+	mem.ExecHandler = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		cmdLine := name + " " + strings.Join(args, " ")
+		trace = append(trace, "exec:"+cmdLine)
+		return []byte("ok"), nil
+	}
+
+	coordTeardown := teardown.NewCoordinator(mem, m, teardown.WithProvider(mockP))
+	stateMgr := state.NewManager(t.TempDir(), state.WithClock(func() time.Time { return baseTime }))
+
+	var eventTypes []lifecycle.EventType
+	coordinator := lifecycle.NewCoordinator(mem, m,
+		lifecycle.WithClock(func() time.Time { return baseTime }),
+		lifecycle.WithTeardownCoordinator(coordTeardown),
+		lifecycle.WithStateManager(stateMgr),
+		lifecycle.WithEventListener(func(e lifecycle.Event) {
+			eventTypes = append(eventTypes, e.Type)
+		}),
+	)
+
+	result, err := coordinator.Execute(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected Execute error: %v", err)
+	}
+	if result.Status != "completed" {
+		t.Fatalf("expected status completed, got %s", result.Status)
+	}
+
+	// Verify sequential event order: Teardown before PreSleepHooks
+	var teardownIdx, preSleepIdx, rtcIdx, powerIdx int
+	for i, evt := range eventTypes {
+		switch evt {
+		case lifecycle.EventTeardownCompleted:
+			teardownIdx = i
+		case lifecycle.EventPreSleepHooksStarted:
+			preSleepIdx = i
+		case lifecycle.EventRTCArmed:
+			rtcIdx = i
+		case lifecycle.EventPowerActionStarted:
+			powerIdx = i
+		}
+	}
+
+	if !(teardownIdx < preSleepIdx && preSleepIdx < rtcIdx && rtcIdx < powerIdx) {
+		t.Fatalf("expected order Teardown < PreSleep < RTC < Power, got indices: teardown=%d, preSleep=%d, rtc=%d, power=%d",
+			teardownIdx, preSleepIdx, rtcIdx, powerIdx)
+	}
+}
+
+func TestCoordinator_ExecutePostWake(t *testing.T) {
+	baseTime := time.Date(2026, 10, 19, 7, 0, 0, 0, time.UTC)
+	mem, _ := setupTestEnv(t, baseTime)
+	m := validTestManifest()
+	m.Hooks.PostWake = []manifest.HookConfig{
+		{Name: "wake-hook-1", Command: "echo wake 1", TimeoutSeconds: 5},
+		{Name: "wake-hook-2", Command: "echo wake 2", TimeoutSeconds: 5},
+	}
+
+	var executed []string
+	mem.ExecHandler = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		executed = append(executed, name+" "+strings.Join(args, " "))
+		return []byte("ok"), nil
+	}
+
+	var events []lifecycle.EventType
+	coordinator := lifecycle.NewCoordinator(mem, m,
+		lifecycle.WithClock(func() time.Time { return baseTime }),
+		lifecycle.WithEventListener(func(e lifecycle.Event) {
+			events = append(events, e.Type)
+		}),
+	)
+
+	err := coordinator.ExecutePostWake(context.Background())
+	if err != nil {
+		t.Fatalf("ExecutePostWake failed: %v", err)
+	}
+	if len(executed) != 2 {
+		t.Fatalf("expected 2 hooks executed, got %d: %v", len(executed), executed)
+	}
+
+	expectedEvents := []lifecycle.EventType{
+		lifecycle.EventPostWakeHooksStarted,
+		lifecycle.EventPostWakeHookStarted,
+		lifecycle.EventPostWakeHookCompleted,
+		lifecycle.EventPostWakeHookStarted,
+		lifecycle.EventPostWakeHookCompleted,
+		lifecycle.EventPostWakeHooksCompleted,
+	}
+	if len(events) != len(expectedEvents) {
+		t.Fatalf("expected %d events, got %d: %v", len(expectedEvents), len(events), events)
+	}
+}
+
+func TestCoordinator_PostWakeOnSuspend(t *testing.T) {
+	baseTime := time.Date(2026, 10, 19, 23, 0, 0, 0, time.UTC)
+	mem, _ := setupTestEnv(t, baseTime)
+	m := validTestManifest()
+	m.Host.PowerAction = "suspend"
+	m.Hooks.PostWake = []manifest.HookConfig{
+		{Name: "post-suspend-wake", Command: "echo resumed", TimeoutSeconds: 5},
+	}
+
+	var executed []string
+	mem.ExecHandler = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		executed = append(executed, name+" "+strings.Join(args, " "))
+		return []byte("ok"), nil
+	}
+
+	mockP := &mockProvider{}
+	coordTeardown := teardown.NewCoordinator(mem, m, teardown.WithProvider(mockP))
+	stateMgr := state.NewManager(t.TempDir(), state.WithClock(func() time.Time { return baseTime }))
+
+	coordinator := lifecycle.NewCoordinator(mem, m,
+		lifecycle.WithClock(func() time.Time { return baseTime }),
+		lifecycle.WithTeardownCoordinator(coordTeardown),
+		lifecycle.WithStateManager(stateMgr),
+	)
+
+	result, err := coordinator.Execute(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected Execute error: %v", err)
+	}
+	if result.Status != "completed" {
+		t.Fatalf("expected status completed, got %s", result.Status)
+	}
+
+	foundPostWakeHook := false
+	for _, cmd := range executed {
+		if strings.Contains(cmd, "resumed") {
+			foundPostWakeHook = true
+			break
+		}
+	}
+	if !foundPostWakeHook {
+		t.Fatalf("expected post-wake hook to execute after suspend resume, got commands: %v", executed)
 	}
 }

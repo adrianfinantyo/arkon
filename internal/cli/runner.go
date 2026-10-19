@@ -110,16 +110,23 @@ func (r *Runner) Run(ctx context.Context, args []string) int {
 		}
 		return r.runStatus(ctx, m, jsonOutput, subArgs)
 	case "inhibit":
-		if _, _, code := r.loadAndValidateManifest(args, jsonOutput); code != ExitOK {
+		m, _, code := r.loadAndValidateManifest(args, jsonOutput)
+		if code != ExitOK {
 			return code
 		}
-		return r.runInhibit(jsonOutput, subArgs)
+		return r.runInhibit(jsonOutput, subArgs, m)
 	case "sleep":
 		m, _, code := r.loadAndValidateManifest(args, jsonOutput)
 		if code != ExitOK {
 			return code
 		}
 		return r.runSleep(ctx, jsonOutput, subArgs, m)
+	case "wake":
+		m, _, code := r.loadAndValidateManifest(args, jsonOutput)
+		if code != ExitOK {
+			return code
+		}
+		return r.runWake(ctx, jsonOutput, subArgs, m)
 	default:
 		return r.runUnknown(subcommand, jsonOutput)
 	}
@@ -184,10 +191,8 @@ func (r *Runner) parseArgs(args []string) (jsonOutput bool, helpRequested bool, 
 		case arg == "-h" || arg == "--help":
 			helpRequested = true
 		case arg == "-c" || arg == "--config":
-			// Skip flag and its value for subcommand identification
 			i++
 		case strings.HasPrefix(arg, "--config="):
-			// Skip inline config flag
 			continue
 		default:
 			remaining = append(remaining, arg)
@@ -202,22 +207,23 @@ func (r *Runner) parseArgs(args []string) (jsonOutput bool, helpRequested bool, 
 	return jsonOutput, helpRequested, subcommand, subArgs
 }
 
-func (r *Runner) getStateManager() *state.Manager {
-	dir := r.StateDir
-	if dir == "" {
-		if r.Env != nil {
-			if v, ok := r.Env.LookupEnv("ARKON_STATE_DIR"); ok && v != "" {
-				dir = v
-			}
-		}
-		if dir == "" {
-			dir = os.Getenv("ARKON_STATE_DIR")
-		}
-		if dir == "" {
-			dir = state.DefaultStateDir
+func (r *Runner) resolveStateDir() string {
+	if r.StateDir != "" {
+		return r.StateDir
+	}
+	if r.Env != nil {
+		if v, ok := r.Env.LookupEnv("ARKON_STATE_DIR"); ok && v != "" {
+			return v
 		}
 	}
+	if v := os.Getenv("ARKON_STATE_DIR"); v != "" {
+		return v
+	}
+	return state.DefaultStateDir
+}
 
+func (r *Runner) getStateManager() *state.Manager {
+	dir := r.resolveStateDir()
 	var opts []state.Option
 	if r.Env != nil {
 		opts = append(opts, state.WithClock(r.Env.Now))
@@ -246,8 +252,7 @@ func (r *Runner) invokingUser() string {
 	return "operator"
 }
 
-func (r *Runner) runInhibit(jsonOutput bool, args []string) int {
-	// Check for list subcommand or flag
+func (r *Runner) runInhibit(jsonOutput bool, args []string, m *manifest.Manifest) int {
 	if len(args) > 0 && args[0] == "list" {
 		return r.runInhibitList(jsonOutput)
 	}
@@ -257,7 +262,6 @@ func (r *Runner) runInhibit(jsonOutput bool, args []string) int {
 		}
 	}
 
-	// Check for release subcommand or flag
 	if len(args) > 0 && args[0] == "release" {
 		id := ""
 		if len(args) > 1 {
@@ -279,9 +283,11 @@ func (r *Runner) runInhibit(jsonOutput bool, args []string) int {
 		}
 	}
 
-	// Parse flags for creating a lock
 	reason := "Manual maintenance window"
 	durationStr := "2h"
+	if m != nil && m.Inhibition.DefaultDuration != "" {
+		durationStr = m.Inhibition.DefaultDuration
+	}
 
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
@@ -431,10 +437,13 @@ func (r *Runner) runInhibitRelease(jsonOutput bool, id string) int {
 }
 
 func (r *Runner) runSleep(ctx context.Context, jsonOutput bool, args []string, m *manifest.Manifest) int {
+	if m == nil {
+		m = &manifest.Manifest{}
+		m.ApplyDefaults()
+	}
+
 	force := false
 	dryRun := false
-	simulateInhibit := false
-	simulateDaytime := false
 
 	for _, arg := range args {
 		switch arg {
@@ -442,24 +451,13 @@ func (r *Runner) runSleep(ctx context.Context, jsonOutput bool, args []string, m
 			force = true
 		case "--dry-run", "-n":
 			dryRun = true
-		case "--simulate-inhibit":
-			simulateInhibit = true
-		case "--simulate-daytime":
-			simulateDaytime = true
 		}
-	}
-
-	if m == nil {
-		m = &manifest.Manifest{}
-		m.ApplyDefaults()
 	}
 
 	coord := lifecycle.NewCoordinator(r.Env, m,
 		lifecycle.WithForce(force),
 		lifecycle.WithDryRun(dryRun),
 		lifecycle.WithStateManager(r.getStateManager()),
-		lifecycle.WithSimulateInhibit(simulateInhibit),
-		lifecycle.WithSimulateDaytime(simulateDaytime),
 	)
 
 	result, err := coord.Execute(ctx)
@@ -545,21 +543,42 @@ func (r *Runner) runSleep(ctx context.Context, jsonOutput bool, args []string, m
 	return ExitOK
 }
 
-func (r *Runner) runStatus(ctx context.Context, m *manifest.Manifest, jsonOutput bool, args []string) int {
-	stateDir := r.StateDir
-	if stateDir == "" {
-		if r.Env != nil {
-			if v, ok := r.Env.LookupEnv("ARKON_STATE_DIR"); ok && v != "" {
-				stateDir = v
-			}
+func (r *Runner) runWake(ctx context.Context, jsonOutput bool, args []string, m *manifest.Manifest) int {
+	coord := lifecycle.NewCoordinator(r.Env, m,
+		lifecycle.WithStateManager(r.getStateManager()),
+	)
+
+	if err := coord.ExecutePostWake(ctx); err != nil {
+		if jsonOutput {
+			_ = WriteJSON(r.Stdout, false, nil, &Error{
+				Code:    "ERR_POST_WAKE_FAILED",
+				Message: err.Error(),
+			})
+			return ExitGeneralError
 		}
-		if stateDir == "" {
-			stateDir = os.Getenv("ARKON_STATE_DIR")
-		}
-		if stateDir == "" {
-			stateDir = state.DefaultStateDir
-		}
+		fmt.Fprintf(r.Stderr, "Error: post-wake hooks failed: %v\n", err)
+		return ExitGeneralError
 	}
+
+	hookCount := 0
+	if m != nil {
+		hookCount = len(m.Hooks.PostWake)
+	}
+
+	if jsonOutput {
+		_ = WriteJSON(r.Stdout, true, map[string]any{
+			"status":         "completed",
+			"hooks_executed": hookCount,
+		}, nil)
+		return ExitOK
+	}
+
+	fmt.Fprintf(r.Stdout, "● Post-wake lifecycle sequence completed (%d hooks executed)\n", hookCount)
+	return ExitOK
+}
+
+func (r *Runner) runStatus(ctx context.Context, m *manifest.Manifest, jsonOutput bool, args []string) int {
+	stateDir := r.resolveStateDir()
 
 	data, err := status.Collect(ctx, r.Env, m, stateDir)
 	if err != nil {
@@ -778,6 +797,7 @@ Available Commands:
   apply      Compile arkon.yaml and sync host systemd units
   status     Display host power state, RTC alarm, and timer status
   sleep      Execute graceful profile teardown and program RTC wakealarm
+  wake       Execute post-wake lifecycle hooks
   inhibit    Temporarily pause automated scheduled shutdown
   schema     Emit canonical JSON Schema (Draft 2020-12) for manifests and state
   version    Print Arkon version information

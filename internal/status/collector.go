@@ -230,20 +230,20 @@ func collectCircadian(ctx context.Context, hostEnv env.HostEnvironment, m *manif
 		powerAction = m.Host.PowerAction
 	}
 
-	action, nextTime := evaluateCircadianNext(hostEnv.Now(), loc, st.SleepAt, st.WakeAt, powerAction)
+	action, nextTime := evaluateCircadianNext(hostEnv.Now(), loc, st.SleepAt, st.WakeAt, powerAction, m.Circadian.Days)
 	st.NextAction = action
 	st.NextTime = nextTime
 
 	return st
 }
 
-func evaluateCircadianNext(now time.Time, loc *time.Location, sleepAt, wakeAt, powerAction string) (string, string) {
+func evaluateCircadianNext(now time.Time, loc *time.Location, sleepAt, wakeAt, powerAction string, days []string) (string, string) {
 	if sleepAt == "" || wakeAt == "" {
 		return "None configured", ""
 	}
 
-	sleepHour, sleepMin, err1 := parseHourMinute(sleepAt)
-	wakeHour, wakeMin, err2 := parseHourMinute(wakeAt)
+	sleepHour, sleepMin, err1 := manifest.ParseTimeHM(sleepAt)
+	wakeHour, wakeMin, err2 := manifest.ParseTimeHM(wakeAt)
 	if err1 != nil || err2 != nil {
 		return "Invalid schedule", ""
 	}
@@ -252,6 +252,15 @@ func evaluateCircadianNext(now time.Time, loc *time.Location, sleepAt, wakeAt, p
 	isDaytime, err := state.IsDaytimeOperational(nowInLoc, wakeAt, sleepAt)
 	if err != nil {
 		return "Invalid schedule", ""
+	}
+
+	activeDays := days
+	if len(activeDays) == 0 {
+		activeDays = manifest.DefaultDays
+	}
+	allowedDays := make(map[string]bool, len(activeDays))
+	for _, d := range activeDays {
+		allowedDays[strings.TrimSpace(d)] = true
 	}
 
 	var action string
@@ -266,10 +275,10 @@ func evaluateCircadianNext(now time.Time, loc *time.Location, sleepAt, wakeAt, p
 		default:
 			action = "Sleep (ACPI S5 Soft-Off)"
 		}
-		target = nextOccurringTime(nowInLoc, loc, sleepHour, sleepMin)
+		target = nextActiveDayTime(nowInLoc, loc, sleepHour, sleepMin, allowedDays)
 	} else {
 		action = "Wake (Hardware RTC)"
-		target = nextOccurringTime(nowInLoc, loc, wakeHour, wakeMin)
+		target = nextActiveDayTime(nowInLoc, loc, wakeHour, wakeMin, allowedDays)
 	}
 
 	nowDay := time.Date(nowInLoc.Year(), nowInLoc.Month(), nowInLoc.Day(), 0, 0, 0, 0, loc)
@@ -292,23 +301,19 @@ func evaluateCircadianNext(now time.Time, loc *time.Location, sleepAt, wakeAt, p
 	return action, nextTimeStr
 }
 
-func parseHourMinute(s string) (int, int, error) {
-	parts := strings.Split(strings.TrimSpace(s), ":")
-	if len(parts) != 2 {
-		return 0, 0, fmt.Errorf("invalid time format: %s", s)
+func nextActiveDayTime(nowInLoc time.Time, loc *time.Location, hour, minute int, allowedDays map[string]bool) time.Time {
+	for dayOffset := 0; dayOffset <= 14; dayOffset++ {
+		date := nowInLoc.AddDate(0, 0, dayOffset)
+		cand := time.Date(date.Year(), date.Month(), date.Day(), hour, minute, 0, 0, loc)
+		if !cand.After(nowInLoc) {
+			continue
+		}
+		dayStr := cand.Weekday().String()[:3]
+		if !allowedDays[dayStr] {
+			continue
+		}
+		return cand
 	}
-	h, err := strconv.Atoi(parts[0])
-	if err != nil || h < 0 || h > 23 {
-		return 0, 0, fmt.Errorf("invalid hour: %s", parts[0])
-	}
-	m, err := strconv.Atoi(parts[1])
-	if err != nil || m < 0 || m > 59 {
-		return 0, 0, fmt.Errorf("invalid minute: %s", parts[1])
-	}
-	return h, m, nil
-}
-
-func nextOccurringTime(nowInLoc time.Time, loc *time.Location, hour, minute int) time.Time {
 	target := time.Date(nowInLoc.Year(), nowInLoc.Month(), nowInLoc.Day(), hour, minute, 0, 0, loc)
 	if !target.After(nowInLoc) {
 		target = target.AddDate(0, 0, 1)

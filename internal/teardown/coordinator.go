@@ -144,11 +144,6 @@ func (c *Coordinator) Provider() TeardownProvider {
 	return c.provider
 }
 
-// Execute runs the full teardown sequence: pre-hooks, phased stops, residual stop, post-hooks, and sync.
-func (c *Coordinator) Execute(ctx context.Context) error {
-	return c.Teardown(ctx)
-}
-
 // Teardown executes all teardown stages in strict sequential dependency order.
 func (c *Coordinator) Teardown(ctx context.Context) error {
 	if err := c.ExecutePreTeardownHooks(ctx); err != nil {

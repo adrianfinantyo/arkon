@@ -37,11 +37,6 @@ func NewDockerComposeProvider(environment env.HostEnvironment, stacks ...string)
 	}
 }
 
-// NewDockerComposeProviderFromConfig constructs a provider from a list of stack paths.
-func NewDockerComposeProviderFromConfig(environment env.HostEnvironment, stacks []string) *DockerComposeProvider {
-	return NewDockerComposeProvider(environment, stacks...)
-}
-
 // NewDockerComposeProviderFromManifest constructs a provider from manifest TeardownConfig.
 func NewDockerComposeProviderFromManifest(environment env.HostEnvironment, cfg manifest.TeardownConfig) *DockerComposeProvider {
 	paths := make([]string, len(cfg.ComposeStacks))

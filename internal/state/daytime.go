@@ -2,9 +2,9 @@ package state
 
 import (
 	"fmt"
-	"strconv"
-	"strings"
 	"time"
+
+	"github.com/adrianfinantyo/arkon/internal/manifest"
 )
 
 // DaytimeConfig contains operational active window settings.
@@ -24,21 +24,10 @@ type SleepCheckResult struct {
 
 // parseTimeMinutes converts an "HH:MM" 24-hour string into total minutes since midnight.
 func parseTimeMinutes(s string) (int, error) {
-	parts := strings.Split(strings.TrimSpace(s), ":")
-	if len(parts) != 2 {
-		return 0, fmt.Errorf("invalid time format %q, expected HH:MM", s)
+	h, m, err := manifest.ParseTimeHM(s)
+	if err != nil {
+		return 0, err
 	}
-
-	h, err := strconv.Atoi(parts[0])
-	if err != nil || h < 0 || h > 23 {
-		return 0, fmt.Errorf("invalid hour in time %q", s)
-	}
-
-	m, err := strconv.Atoi(parts[1])
-	if err != nil || m < 0 || m > 59 {
-		return 0, fmt.Errorf("invalid minute in time %q", s)
-	}
-
 	return h*60 + m, nil
 }
 

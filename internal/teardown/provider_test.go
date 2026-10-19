@@ -46,9 +46,9 @@ func TestDockerComposeProvider_NameAndLiveness(t *testing.T) {
 		}
 	})
 
-	t.Run("constructs provider from manifest TeardownConfig", func(t *testing.T) {
+	t.Run("constructs provider with stacks", func(t *testing.T) {
 		mem := env.NewMemEnv()
-		cfg := teardown.NewDockerComposeProviderFromConfig(mem, []string{"/opt/stacks/apps", "/opt/stacks/infra"})
+		cfg := teardown.NewDockerComposeProvider(mem, "/opt/stacks/apps", "/opt/stacks/infra")
 		if cfg.Name() != "docker-compose" {
 			t.Fatalf("expected provider name 'docker-compose', got %q", cfg.Name())
 		}

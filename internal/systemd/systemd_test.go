@@ -305,7 +305,7 @@ func TestInstallerRollbackOnFileWriteFailure(t *testing.T) {
 
 	// Fail write on timer unit
 	mem.WriteHandler = func(path string, data []byte, perm os.FileMode) error {
-		if path == tmrPath {
+		if strings.HasPrefix(path, tmrPath) {
 			return errors.New("simulated disk full")
 		}
 		mem.Files[path] = data
@@ -322,6 +322,54 @@ func TestInstallerRollbackOnFileWriteFailure(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected Install to fail on write error")
+	}
+
+	// Verify rollback restored original service
+	if string(mem.Files[svcPath]) != string(originalService) {
+		t.Errorf("expected service unit to be restored to %q, got %q", string(originalService), string(mem.Files[svcPath]))
+	}
+	if string(mem.Files[tmrPath]) != string(originalTimer) {
+		t.Errorf("expected timer unit to be restored to %q, got %q", string(originalTimer), string(mem.Files[tmrPath]))
+	}
+}
+
+func TestInstallerRollbackOnRenameFailure(t *testing.T) {
+	mem := env.NewMemEnv()
+	mem.EUID = 0
+
+	targetDir := "/etc/systemd/system"
+	svcPath := filepath.Join(targetDir, DefaultServiceName)
+	tmrPath := filepath.Join(targetDir, DefaultTimerName)
+
+	originalService := []byte("# old service")
+	originalTimer := []byte("# old timer")
+	mem.Files[svcPath] = originalService
+	mem.Files[tmrPath] = originalTimer
+
+	// Fail rename on timer unit
+	mem.RenameHandler = func(oldPath, newPath string) error {
+		if newPath == tmrPath {
+			return errors.New("simulated rename failure")
+		}
+		data, exists := mem.Files[oldPath]
+		if !exists {
+			return os.ErrNotExist
+		}
+		delete(mem.Files, oldPath)
+		mem.Files[newPath] = data
+		return nil
+	}
+
+	installer := NewInstaller(mem)
+	m := sampleManifest()
+
+	_, err := installer.Install(context.Background(), m, InstallOptions{
+		DryRun:     false,
+		TargetDir:  targetDir,
+		ConfigPath: "/etc/arkon/arkon.yaml",
+	})
+	if err == nil {
+		t.Fatal("expected Install to fail on rename error")
 	}
 
 	// Verify rollback restored original service

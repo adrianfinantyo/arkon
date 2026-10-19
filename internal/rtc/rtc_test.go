@@ -546,3 +546,19 @@ func TestCustomOptions(t *testing.T) {
 		t.Fatalf("expected location Tokyo, got %v", status.Target.Location())
 	}
 }
+
+func TestManager_EnvironmentVariableRTCDevice(t *testing.T) {
+	mem := env.NewMemEnv()
+	customRTC := "/sys/class/rtc/rtc2"
+	mem.EnvVars["ARKON_RTC_DEVICE"] = customRTC
+	mem.Files[filepath.Join(customRTC, "wakealarm")] = []byte("1729340000\n")
+
+	mgr := rtc.NewManager(mem)
+	status, err := mgr.GetStatus()
+	if err != nil {
+		t.Fatalf("GetStatus failed: %v", err)
+	}
+	if status.Device != customRTC {
+		t.Fatalf("expected device %q from ARKON_RTC_DEVICE, got %q", customRTC, status.Device)
+	}
+}

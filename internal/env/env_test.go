@@ -46,11 +46,27 @@ func TestRealEnvOperations(t *testing.T) {
 		t.Fatalf("expected %q, got %q", string(testData), string(readBack))
 	}
 
-	// Verify RemoveFile
-	if err := env.RemoveFile(testPath); err != nil {
-		t.Fatalf("RemoveFile failed: %v", err)
+	// Verify RenameFile
+	renamedPath := filepath.Join(tmpDir, "renamed.txt")
+	if err := env.WriteFile(testPath, testData, 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+	if err := env.RenameFile(testPath, renamedPath); err != nil {
+		t.Fatalf("RenameFile failed: %v", err)
 	}
 	if _, err := env.ReadFile(testPath); err == nil {
+		t.Fatal("expected old path to not exist after RenameFile")
+	}
+	renamedData, err := env.ReadFile(renamedPath)
+	if err != nil || string(renamedData) != string(testData) {
+		t.Fatalf("expected renamed file data %q, got %q (err: %v)", string(testData), string(renamedData), err)
+	}
+
+	// Verify RemoveFile
+	if err := env.RemoveFile(renamedPath); err != nil {
+		t.Fatalf("RemoveFile failed: %v", err)
+	}
+	if _, err := env.ReadFile(renamedPath); err == nil {
 		t.Fatal("expected error reading removed file in RealEnv")
 	}
 
@@ -118,6 +134,25 @@ func TestMemEnvOperations(t *testing.T) {
 	}
 	if err := mem.RemoveFile("/nonexistent"); err == nil {
 		t.Fatal("expected error removing nonexistent file in MemEnv")
+	}
+
+	// Verify RenameFile
+	if err := mem.WriteFile(path, content, 0644); err != nil {
+		t.Fatalf("MemEnv WriteFile failed: %v", err)
+	}
+	renamedMemPath := "/etc/arkon/renamed.yaml"
+	if err := mem.RenameFile(path, renamedMemPath); err != nil {
+		t.Fatalf("MemEnv RenameFile failed: %v", err)
+	}
+	if _, err := mem.ReadFile(path); err == nil {
+		t.Fatal("expected old path to not exist after RenameFile in MemEnv")
+	}
+	renamedMemData, err := mem.ReadFile(renamedMemPath)
+	if err != nil || string(renamedMemData) != string(content) {
+		t.Fatalf("expected %q, got %q (err: %v)", string(content), string(renamedMemData), err)
+	}
+	if err := mem.RenameFile("/nonexistent", "/other"); err == nil {
+		t.Fatal("expected error renaming nonexistent file in MemEnv")
 	}
 
 	// Test exec handler
