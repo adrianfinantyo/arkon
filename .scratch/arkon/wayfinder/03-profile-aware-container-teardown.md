@@ -25,7 +25,7 @@ type TeardownProvider interface {
 }
 ```
 
-* **Default Provider (`docker-compose`):** Invokes `docker compose --project-directory <path> --profile <tier> stop -t <sec>`, leveraging native Compose profile, environment, and dependency resolution without embedding a bulky Compose YAML parser. Uses `/var/run/docker.sock` for fast pre-flight daemon health ping.
+* **Default Provider (`docker-compose`):** Invokes `docker compose --project-directory <path> --profile <tier> stop -t <sec>`, relying on native Compose profile, environment, and dependency resolution without embedding a bulky Compose YAML parser. Uses `/var/run/docker.sock` for fast pre-flight daemon health ping.
 * **Extensible Providers:**
   - `podman-compose`: Identical CLI semantics for rootless/daemonless container hosts.
   - `command`: Arbitrary CLI hooks per tier (supporting PM2, custom scripts, or `kubectl drain`).

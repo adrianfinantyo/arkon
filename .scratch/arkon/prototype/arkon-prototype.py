@@ -33,7 +33,7 @@ def emit_json(success, data=None, error=None):
     print(json.dumps(envelope, indent=2))
 
 def print_usage():
-    print(f"""{BOLD}{WHITE}Arkon{RESET} {GRAY}v0.1.0-dev{RESET} — Host Power Lifecycle & Docker Orchestrator
+    print(f"""{BOLD}{WHITE}Arkon{RESET} {GRAY}v0.1.0-dev{RESET}: Host Power Lifecycle & Docker Orchestrator
 
 {BOLD}USAGE:{RESET}
   arkon <command> [flags]
