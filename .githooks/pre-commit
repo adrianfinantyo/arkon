@@ -33,7 +33,7 @@ if [ ! -f "$DESLOP_SCRIPT" ]; then
     fi
 fi
 
-if ! python3 "$DESLOP_SCRIPT" --all --force; then
+if ! python3 "$DESLOP_SCRIPT" --staged; then
     echo ""
     echo "[git-hook] ❌ Commit blocked: Anti-slop check failed."
     echo "[git-hook] Review .agents/rules/deslop.md and fix the issues above."

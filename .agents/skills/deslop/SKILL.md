@@ -1,6 +1,6 @@
 ---
 name: deslop
-description: "Detect and eliminate AI slop—such as em-dashes, corporate buzzwords, sycophancy, and boilerplate comments—from text, UI copy, code, or logic. Rewrites content to sound natural, grounded, and human-to-human without over-simplifying technical depth. Use when asked to deslop, humanize, clean up writing, or eliminate AI tropes."
+description: "Detect and eliminate AI slop (such as em-dashes, corporate buzzwords, sycophancy, and boilerplate comments) from text, UI copy, code, or logic. Rewrites content to sound natural, grounded, and human-to-human without over-simplifying technical depth. Use when asked to deslop, humanize, clean up writing, or eliminate AI tropes."
 ---
 
 # Deslop Skill
@@ -55,9 +55,9 @@ Eliminate inflated corporate vocabulary and AI cliches. Replace with plain, dire
 - **Tautological comments:** Delete comments that merely restate the syntax (e.g., `// increment i`, `// check if user is nil`, `// return the response`).
 - **Defensive bloat:** Remove paranoia checks on internal private invariants that earlier code or type systems already guarantee.
 - **Boilerplate indirection:** Strip single-use wrapper classes or unnecessary adapter layers that only forward arguments without adding logic.
-- **UI copy:** Error messages must tell the user what went wrong, why, and how to fix it—not "Oops! Something went wrong!". Action buttons should use specific verbs ("Save photo", "Copy link").
+- **UI copy:** Error messages must tell the user what went wrong, why, and how to fix it, rather than "Oops! Something went wrong!". Action buttons should use specific verbs ("Save photo", "Copy link").
 
-### 5. Depth Invariant: Do NOT Over-Simplify
+## 5. Depth Invariant: Do NOT Over-Simplify
 - **Clarity is not dumbing down:** Human-to-human communication between technical peers does not mean "explain like I'm 5".
 - **Preserve domain and technical precision:** Retain exact hardware specs (e.g., CPU models, cache sizes, memory footprints), architectural patterns, database isolation levels, algorithm complexity ($O(n)$ bounds), and domain-specific terms.
 - **Keep trade-offs honest:** Real engineering involves compromises. Don't smooth over rough edges or limitations with cheerful hand-waving.
@@ -67,9 +67,9 @@ Eliminate inflated corporate vocabulary and AI cliches. Replace with plain, dire
 1. **Resolve input:** Identify targets (mentioned files, commit ref, or ask confirmation for `--all`).
 2. **Run deslop checker:**
    ```bash
-   ./scripts/deslop.py --files <targets>
+   python3 scripts/deslop.py --files <targets>
    # or for staged files:
-   ./scripts/deslop.py --staged
+   python3 scripts/deslop.py --staged
    ```
 3. **Review & Rewrite:** Apply edits directly to the offending sections following the taxonomy.
 4. **Verify:**
