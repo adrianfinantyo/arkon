@@ -1,0 +1,46 @@
+package status
+
+import (
+	"github.com/adrianfinantyo/arkon/internal/state"
+)
+
+// StatusData represents the complete diagnostic data model for Arkon host status.
+type StatusData struct {
+	HostPowerState  string                 `json:"host_power_state"`
+	Hostname        string                 `json:"hostname"`
+	CPUArch         string                 `json:"cpu_arch"`
+	Timezone        string                 `json:"timezone"`
+	RTCWakeAlarm    *RTCStatus             `json:"rtc_wake_alarm"`
+	CircadianTimer  CircadianStatus        `json:"circadian_timer"`
+	InhibitionLocks []state.InhibitionLock `json:"inhibition_locks"`
+	Teardown        TeardownStatus         `json:"teardown"`
+}
+
+// RTCStatus represents the hardware real-time clock wakealarm state.
+type RTCStatus struct {
+	Enabled       bool   `json:"enabled"`
+	AlarmTimeUTC  string `json:"alarm_time_utc,omitempty"`
+	AlarmTimeHost string `json:"alarm_time_host,omitempty"`
+	SecondsUntil  int64  `json:"seconds_until,omitempty"`
+	Device        string `json:"device"`
+	ClockMode     string `json:"clock_mode,omitempty"`
+	KernelDirty   string `json:"kernel_dirty,omitempty"`
+}
+
+// CircadianStatus represents the daily sleep and wake policy.
+type CircadianStatus struct {
+	SleepAt    string `json:"sleep_at"`
+	WakeAt     string `json:"wake_at"`
+	NextAction string `json:"next_action"`
+	NextTime   string `json:"next_time"`
+	TimerUnit  string `json:"timer_unit"`
+	Active     bool   `json:"active"`
+}
+
+// TeardownStatus represents the workload shutdown configuration.
+type TeardownStatus struct {
+	Provider     string   `json:"provider"`
+	ProfileOrder []string `json:"profile_order"`
+	StackCount   int      `json:"stack_count"`
+	Stacks       []string `json:"stacks,omitempty"`
+}

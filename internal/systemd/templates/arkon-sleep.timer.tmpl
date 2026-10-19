@@ -1,0 +1,11 @@
+[Unit]
+Description=Arkon Circadian Sleep Schedule Timer
+Documentation=https://github.com/adrianfinantyo/arkon
+
+[Timer]
+OnCalendar={{.OnCalendar}}
+Persistent=false
+Unit=arkon-sleep.service
+
+[Install]
+WantedBy=timers.target

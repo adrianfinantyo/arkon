@@ -72,8 +72,8 @@ version: "1"
 
 host:
   timezone: "Asia/Jakarta"
-  rtc_device: "/sys/class/rtc/rtc0"
-  power_action: "poweroff" # enum: poweroff (ACPI S5), suspend (ACPI S3), hibernate (ACPI S4)
+  rtc_device: "/sys/class/rtc/rtc0" # default: /sys/class/rtc/rtc0
+  power_action: "poweroff"         # canonical power action: poweroff (ACPI S5), suspend (ACPI S3), hibernate (ACPI S4)
 
 circadian:
   sleep_at: "23:00"
@@ -95,13 +95,22 @@ hooks:
       command: "sync"
       timeout_seconds: 10
       ignore_errors: false
+    # Scalar shorthand is also supported: - "sync" expands with default timeout (10s) and ignore_errors (false)
   pre_sleep: []
   post_wake: []
 
 inhibition:
   default_duration: "2h"
   daytime_protection: true
+  daytime_start: "07:00" # optional: defaults to circadian.wake_at
+  daytime_end: "23:00"   # optional: defaults to circadian.sleep_at
 ```
+
+Key schema conventions:
+- **Hostname resolution:** Hostname is discovered dynamically from the host operating system (`/etc/hostname` or kernel query), rather than declared statically in YAML.
+- **Power transition action:** Configured under `host.power_action`, defining whether Arkon shuts down (`poweroff`), suspends to RAM (`suspend`), or hibernates to disk (`hibernate`).
+- **Hook syntax:** Lifecycle hooks accept both structured mappings (`name`, `command`, `timeout_seconds`, `ignore_errors`) and scalar string shorthands (e.g., `- "sync"`).
+- **Daytime boundaries:** Daytime protection defaults to the circadian `wake_at` and `sleep_at` window, with optional explicit overrides via `daytime_start` and `daytime_end`.
 
 ### 3. Pluggable Workload Teardown Provider
 
@@ -145,6 +154,14 @@ Hardware wake management bypasses external subprocesses:
 
 ### 7. Terminal UX, Machine Contract, and Exit Codes
 
+- CLI command surface:
+  - `arkon apply`: Compile `arkon.yaml` and synchronize host systemd service and timer units.
+  - `arkon status`: Display host power state, RTC alarm countdown, and active inhibition locks.
+  - `arkon sleep`: Execute workload teardown pipeline, sync disks, arm hardware RTC, and cut host power.
+  - `arkon wake`: Execute post-wake lifecycle hooks upon host resume.
+  - `arkon inhibit`: Acquire, list, or release temporary maintenance locks blocking sleep.
+  - `arkon schema`: Emit canonical JSON Schema for validation and agent introspection.
+  - `arkon version`: Print build version, commit, and date.
 - Terminal output: Uses a single, vertical, borderless left-rail layout with colored bullets (`●`) and indented key-value pairs, avoiding table border wrapping on narrow screens.
 - JSON envelope: Global `--json` flag formats all output into a typed envelope:
   ```json

@@ -65,7 +65,7 @@ EXCLUDED_EXTENSIONS = {
 }
 
 EXCLUDED_PATHS = [
-    ".git/", "node_modules/", "vendor/", "dist/", "build/", ".scratch/"
+    ".git/", "node_modules/", "vendor/", "dist/", "build/", ".scratch/", ".agents/"
 ]
 
 
