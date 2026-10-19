@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -639,3 +640,66 @@ func TestCoordinator_DefaultsAndOptions(t *testing.T) {
 		}
 	})
 }
+
+func TestExecuteHook_TimeoutEnforcement(t *testing.T) {
+	t.Run("hook exceeding timeout is cancelled via context deadline", func(t *testing.T) {
+		mem := env.NewMemEnv()
+		mem.ExecHandler = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(5 * time.Second):
+				return []byte("completed late"), nil
+			}
+		}
+
+		hook := manifest.HookConfig{
+			Name:           "slow-backup",
+			Command:        "sleep 10",
+			TimeoutSeconds: 1, // 1 second timeout
+			IgnoreErrors:   false,
+		}
+
+		start := time.Now()
+		err := teardown.ExecuteHook(context.Background(), mem, hook)
+		elapsed := time.Since(start)
+
+		if err == nil {
+			t.Fatal("expected hook timeout error, got nil")
+		}
+		if !strings.Contains(err.Error(), "timed out after") {
+			t.Fatalf("expected error mentioning timed out, got: %v", err)
+		}
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("expected errors.Is DeadlineExceeded, got: %v", err)
+		}
+		if elapsed > 3*time.Second {
+			t.Fatalf("hook execution exceeded timeout deadline: took %v", elapsed)
+		}
+	})
+
+	t.Run("timed out hook with ignore_errors returns nil", func(t *testing.T) {
+		mem := env.NewMemEnv()
+		mem.ExecHandler = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(5 * time.Second):
+				return []byte("late"), nil
+			}
+		}
+
+		hook := manifest.HookConfig{
+			Name:           "slow-ignorable",
+			Command:        "sleep 10",
+			TimeoutSeconds: 1,
+			IgnoreErrors:   true,
+		}
+
+		err := teardown.ExecuteHook(context.Background(), mem, hook)
+		if err != nil {
+			t.Fatalf("expected nil error for ignored hook timeout, got: %v", err)
+		}
+	})
+}
+

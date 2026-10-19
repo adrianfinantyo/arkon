@@ -4,13 +4,13 @@
 
 **Blocked by:** 09: Host Environment Seam Integrity & CLI Runner Decomposition, 10: State File Corruption Resilience & Recovery
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Write unit test in `internal/systemd/systemd_test.go` verifying that if `systemctl daemon-reload` returns an error, the installer restores backed-up unit files and issues a recovery reload.
-- [ ] Write unit test in `internal/systemd/systemd_test.go` verifying that if destination file write fails during installation, existing units are not corrupted and backups are restored.
-- [ ] Write unit test in `internal/teardown/coordinator_test.go` verifying that hooks running beyond their configured `timeout_seconds` are canceled via context deadline.
-- [ ] Expand `cmd/arkon/main_test.go` to test binary-level execution for all deterministic exit codes:
+- [x] Write unit test in `internal/systemd/systemd_test.go` verifying that if `systemctl daemon-reload` returns an error, the installer restores backed-up unit files and issues a recovery reload.
+- [x] Write unit test in `internal/systemd/systemd_test.go` verifying that if destination file write fails during installation, existing units are not corrupted and backups are restored.
+- [x] Write unit test in `internal/teardown/coordinator_test.go` verifying that hooks running beyond their configured `timeout_seconds` are canceled via context deadline.
+- [x] Expand `cmd/arkon/main_test.go` to test binary-level execution for all deterministic exit codes:
   - Exit code 2 (inhibited transition via active lock or daytime operational window)
   - Exit code 3 (manifest validation or compilation failure)
   - Exit code 4 (insufficient privileges when running `apply` without root and without `--dry-run`)
-- [ ] All test suites pass cleanly across all packages.
+- [x] All test suites pass cleanly across all packages.
