@@ -411,50 +411,39 @@ func TestNoArgsJSON(t *testing.T) {
 	}
 }
 
-func TestPlaceholderSubcommands(t *testing.T) {
-	commands := []string{}
+func TestHostEnvironmentStateDirAndInvokingUser(t *testing.T) {
+	t.Run("state dir from HostEnvironment", func(t *testing.T) {
+		mem := env.NewMemEnv()
+		mem.EnvVars["ARKON_STATE_DIR"] = "/custom/state/dir"
+		runner, _, _ := newTestRunner(mem)
+		if got := runner.resolveStateDir(); got != "/custom/state/dir" {
+			t.Fatalf("expected /custom/state/dir, got %s", got)
+		}
+	})
 
-	for _, cmd := range commands {
-		t.Run(cmd+" text", func(t *testing.T) {
-			mem := env.NewMemEnv()
-			runner, stdout, stderr := newTestRunner(mem)
+	t.Run("invoking user from SUDO_USER", func(t *testing.T) {
+		mem := env.NewMemEnv()
+		mem.EnvVars["SUDO_USER"] = "alice"
+		mem.EnvVars["USER"] = "root"
+		runner, _, _ := newTestRunner(mem)
+		if got := runner.invokingUser(); got != "alice" {
+			t.Fatalf("expected alice, got %s", got)
+		}
+	})
 
-			code := runner.Run(context.Background(), []string{cmd})
-			if code != ExitGeneralError {
-				t.Fatalf("expected exit code %d, got %d", ExitGeneralError, code)
-			}
-			if stdout.Len() != 0 {
-				t.Fatalf("expected empty stdout, got: %s", stdout.String())
-			}
-			if !strings.Contains(stderr.String(), cmd) {
-				t.Fatalf("expected error mentioning command %s, got: %s", cmd, stderr.String())
-			}
-		})
+	t.Run("invoking user falls back to USER then operator", func(t *testing.T) {
+		mem := env.NewMemEnv()
+		mem.EnvVars["USER"] = "bob"
+		runner, _, _ := newTestRunner(mem)
+		if got := runner.invokingUser(); got != "bob" {
+			t.Fatalf("expected bob, got %s", got)
+		}
 
-		t.Run(cmd+" json", func(t *testing.T) {
-			mem := env.NewMemEnv()
-			runner, stdout, stderr := newTestRunner(mem)
-
-			code := runner.Run(context.Background(), []string{cmd, "--json"})
-			if code != ExitGeneralError {
-				t.Fatalf("expected exit code %d, got %d", ExitGeneralError, code)
-			}
-			if stderr.Len() != 0 {
-				t.Fatalf("expected empty stderr, got: %s", stderr.String())
-			}
-
-			var envelope Envelope
-			if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
-				t.Fatalf("failed to decode json envelope: %v", err)
-			}
-			if envelope.Success {
-				t.Fatal("expected success: false")
-			}
-			if envelope.Error == nil || envelope.Error.Code != "ERR_NOT_IMPLEMENTED" {
-				t.Fatalf("expected ERR_NOT_IMPLEMENTED, got: %v", envelope.Error)
-			}
-		})
-	}
+		delete(mem.EnvVars, "USER")
+		if got := runner.invokingUser(); got != "operator" {
+			t.Fatalf("expected operator, got %s", got)
+		}
+	})
 }
 
 func TestStatusCommandText(t *testing.T) {

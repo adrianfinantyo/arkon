@@ -4,11 +4,11 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] `resolveStateDir` in CLI runner strictly queries `r.Env.LookupEnv("ARKON_STATE_DIR")` without bypassing `HostEnvironment` to `os.Getenv`.
-- [ ] `invokingUser` in CLI runner queries `r.Env.LookupEnv("SUDO_USER")` and `r.Env.LookupEnv("USER")` before falling back to default "operator", eliminating unmocked `user.Current()` and `os.Getenv` leaks.
-- [ ] `loadAndValidateManifest` requires an explicit boolean or strict validation mode for commands that mandate a manifest (`apply`, `status`, `sleep`, `wake`), returning exit code 3 when discovery fails rather than returning nil manifest with exit code 0.
-- [ ] Eliminate duplicated privilege checking and error emission in `runApply`.
-- [ ] Decompose `runner.go` into modular dispatchers (`runner_apply.go`, `runner_sleep.go`, `runner_inhibit.go`, `runner_status.go`, `runner_wake.go`) to maintain long-term code clarity.
-- [ ] All existing and refactored CLI tests pass without regression.
+- [x] `resolveStateDir` in CLI runner strictly queries `r.Env.LookupEnv("ARKON_STATE_DIR")` without bypassing `HostEnvironment` to `os.Getenv`.
+- [x] `invokingUser` in CLI runner queries `r.Env.LookupEnv("SUDO_USER")` and `r.Env.LookupEnv("USER")` before falling back to default "operator", eliminating unmocked `user.Current()` and `os.Getenv` leaks.
+- [x] `loadAndValidateManifest` requires an explicit boolean or strict validation mode for commands that mandate a manifest (`apply`, `status`, `sleep`, `wake`), returning exit code 3 when discovery fails rather than returning nil manifest with exit code 0.
+- [x] Eliminate duplicated privilege checking and error emission in `runApply`.
+- [x] Decompose `runner.go` into modular dispatchers (`runner_apply.go`, `runner_sleep.go`, `runner_inhibit.go`, `runner_status.go`, `runner_wake.go`) to maintain long-term code clarity.
+- [x] All existing and refactored CLI tests pass without regression.
