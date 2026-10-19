@@ -5,6 +5,7 @@ Declarative host power lifecycle and pluggable workload teardown orchestrator fo
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Go Version](https://img.shields.io/badge/Go-1.23%2B-00ADD8.svg?logo=go)](go.mod)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20(amd64%20%7C%20arm64)-orange.svg)](docs/)
+[![Documentation](https://img.shields.io/badge/Documentation-GitHub%20Pages-blue.svg)](https://adrianfinantyo.github.io/arkon/)
 
 Arkon bridges the gap between **homelab workloads (Docker Compose, Podman, K8s/K3s, systemd slices, or custom CLI commands)** and **host hardware power management** (ACPI S5, Real-Time Clock wakealarms, systemd units, and disk spindowns).
 

@@ -1,0 +1,52 @@
+site_name: Arkon
+site_description: Declarative host power lifecycle and pluggable workload teardown orchestrator for Linux homelabs
+site_url: https://adrianfinantyo.github.io/arkon/
+repo_url: https://github.com/adrianfinantyo/arkon
+repo_name: adrianfinantyo/arkon
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - content.code.copy
+    - navigation.sections
+    - search.highlight
+    - search.share
+
+markdown_extensions:
+  - tables
+  - fenced_code
+  - admonition
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+
+nav:
+  - Overview: index.md
+  - Operator Guides:
+      - Homelab Deployment: guides/homelab-deployment.md
+      - Hardware & Power Troubleshooting: guides/troubleshooting-hardware.md
+  - Reference:
+      - CLI & Exit Codes: reference/cli.md
+      - Manifest Specification: reference/manifest.md
+  - Architecture & Decisions:
+      - Workload Providers: architecture/workload-providers.md
+      - "ADR 0001: Git Hooks & CI Parity": adr/0001-git-hooks-and-ci-parity.md
+      - "ADR 0002: Distribution & Self-Update": adr/0002-binary-distribution-and-self-update.md
+      - "ADR 0003: Active Manifest Authority": adr/0003-active-host-manifest-authority.md
