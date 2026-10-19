@@ -28,7 +28,11 @@ A complete architectural blueprint and technical specification for **Arkon**, de
 
 ## Active tickets
 
-None.
+- [[16] Status Command Startup & Hooks Visibility](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/16-status-startup-and-hooks-visibility.md)
+- [[17] Local CI Parity & Pre-Push Hook Automation](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/17-git-hooks-ci-parity.md)
+- [[18] GoReleaser Packaging & Release Automation](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/18-goreleaser-and-release-automation.md)
+- [[19] Workload Provider Extensibility Documentation & Roadmap](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/19-workload-provider-extensibility-docs.md)
+- [[20] Documentation & Manifest Alignment](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/20-documentation-and-manifest-alignment.md)
 
 ## Not yet specified
 
