@@ -14,6 +14,7 @@ type HostEnvironment interface {
 	FS() fs.FS
 	WriteFile(path string, data []byte, perm os.FileMode) error
 	ReadFile(path string) ([]byte, error)
+	RemoveFile(path string) error
 	Exec(ctx context.Context, name string, args ...string) ([]byte, error)
 	SyncFS() error
 	Now() time.Time

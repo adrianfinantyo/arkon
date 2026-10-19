@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"syscall"
 	"time"
 )
@@ -22,11 +23,19 @@ func (e *RealEnv) FS() fs.FS {
 }
 
 func (e *RealEnv) WriteFile(path string, data []byte, perm os.FileMode) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
 	return os.WriteFile(path, data, perm)
 }
 
 func (e *RealEnv) ReadFile(path string) ([]byte, error) {
 	return os.ReadFile(path)
+}
+
+func (e *RealEnv) RemoveFile(path string) error {
+	return os.Remove(path)
 }
 
 func (e *RealEnv) Exec(ctx context.Context, name string, args ...string) ([]byte, error) {
