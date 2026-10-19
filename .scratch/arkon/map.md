@@ -30,6 +30,7 @@ A complete architectural blueprint and technical specification for **Arkon**, de
 - [[18] GoReleaser Packaging & Release Automation](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/18-goreleaser-and-release-automation.md): Configure GoReleaser v2, tag-triggered release workflow, static cross-compilation with ldflags version stamping, .deb packaging, and curl installer.
 - [[19] Workload Provider Extensibility Documentation & Roadmap](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/19-workload-provider-extensibility-docs.md): Document TeardownProvider and StartupProvider interfaces in docs/architecture/workload-providers.md and publish community contribution issues (#21, #22, #23).
 - [[20] Documentation & Manifest Alignment](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/20-documentation-and-manifest-alignment.md): Align README.md with full quickstart, installation instructions, live status preview, and provide annotated reference manifest arkon.example.yaml.
+- [[21] Active Host Manifest Authority & Discovery Drift Notice](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/21-active-host-manifest-authority.md): Single active host manifest authority via canonical symlink at '/etc/arkon/arkon.yaml' and state record in '/var/lib/arkon/state.json', preventing directory confusion, surfacing clear unconfigured/degradation warnings in 'arkon status', and detecting local directory drift.
 
 ## Active tickets
 
