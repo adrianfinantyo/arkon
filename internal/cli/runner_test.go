@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/adrianfinantyo/arkon/internal/env"
+	"github.com/adrianfinantyo/arkon/internal/systemd"
 )
 
 func newTestRunner(env env.HostEnvironment) (*Runner, *bytes.Buffer, *bytes.Buffer) {
@@ -410,7 +412,7 @@ func TestNoArgsJSON(t *testing.T) {
 }
 
 func TestPlaceholderSubcommands(t *testing.T) {
-	commands := []string{"apply"}
+	commands := []string{}
 
 	for _, cmd := range commands {
 		t.Run(cmd+" text", func(t *testing.T) {
@@ -1011,5 +1013,274 @@ func TestRunnerDiscoveredConfigValidationFailure(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "180") {
 		t.Fatalf("expected stderr to mention 180s buffer, got: %s", stderr.String())
+	}
+}
+
+func TestRunnerApplyNonRootRequiresRootExitCode4(t *testing.T) {
+	mem := env.NewMemEnv()
+	mem.EUID = 1000 // Non-root
+	_ = mem.WriteFile("/etc/arkon/arkon.yaml", []byte(testValidManifestYAML), 0644)
+
+	runner, stdout, stderr := newTestRunner(mem)
+	code := runner.Run(context.Background(), []string{"apply", "-c", "/etc/arkon/arkon.yaml"})
+
+	if code != ExitInsufficientPrivilege {
+		t.Fatalf("expected ExitInsufficientPrivilege (4), got %d (stderr: %s)", code, stderr.String())
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("expected empty stdout on permission error, got: %s", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "Root privileges required") {
+		t.Errorf("expected stderr to mention root privileges, got: %s", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "sudo arkon apply") {
+		t.Errorf("expected stderr to mention sudo, got: %s", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "arkon apply --dry-run") {
+		t.Errorf("expected stderr to mention dry-run, got: %s", stderr.String())
+	}
+
+	// JSON mode
+	stdout.Reset()
+	stderr.Reset()
+	code = runner.Run(context.Background(), []string{"apply", "-c", "/etc/arkon/arkon.yaml", "--json"})
+	if code != ExitInsufficientPrivilege {
+		t.Fatalf("expected ExitInsufficientPrivilege (4) in JSON mode, got %d", code)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr in JSON mode, got: %s", stderr.String())
+	}
+
+	var envIns Envelope
+	if err := json.Unmarshal(stdout.Bytes(), &envIns); err != nil {
+		t.Fatalf("failed to decode JSON envelope: %v", err)
+	}
+	if envIns.Success {
+		t.Fatal("expected success: false")
+	}
+	if envIns.Error == nil || envIns.Error.Code != "ERR_INSUFFICIENT_PERMISSIONS" {
+		t.Fatalf("expected ERR_INSUFFICIENT_PERMISSIONS, got %v", envIns.Error)
+	}
+}
+
+func TestRunnerApplyDryRunNonRootSuccess(t *testing.T) {
+	mem := env.NewMemEnv()
+	mem.EUID = 1000 // Non-root
+	_ = mem.WriteFile("/etc/arkon/arkon.yaml", []byte(testValidManifestYAML), 0644)
+
+	runner, stdout, stderr := newTestRunner(mem)
+	code := runner.Run(context.Background(), []string{"apply", "--dry-run", "-c", "/etc/arkon/arkon.yaml"})
+
+	if code != ExitOK {
+		t.Fatalf("expected ExitOK (0), got %d (stderr: %s)", code, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+
+	out := stdout.String()
+	if !strings.Contains(out, "● ARKON SYSTEMD COMPILER") {
+		t.Errorf("expected left-rail header in stdout, got: %s", out)
+	}
+	if !strings.Contains(out, "✔ [1/4] Manifest parsed:") {
+		t.Errorf("expected step 1 check in stdout, got: %s", out)
+	}
+	if !strings.Contains(out, "✔ [2/4] Compiled units:") {
+		t.Errorf("expected step 2 check in stdout, got: %s", out)
+	}
+	if !strings.Contains(out, "✔ [3/4] Verified syntax: systemd-analyze verify") {
+		t.Errorf("expected step 3 check in stdout, got: %s", out)
+	}
+	if !strings.Contains(out, "--- arkon-sleep.service ---") {
+		t.Errorf("expected service unit section in stdout, got: %s", out)
+	}
+	if !strings.Contains(out, "--- arkon-sleep.timer ---") {
+		t.Errorf("expected timer unit section in stdout, got: %s", out)
+	}
+	if !strings.Contains(out, "DRY RUN COMPLETE: Units validated cleanly. No changes written to disk.") {
+		t.Errorf("expected dry run complete message, got: %s", out)
+	}
+
+	// Verify no unit files written to destination
+	if _, exists := mem.Files["/etc/systemd/system/arkon-sleep.service"]; exists {
+		t.Fatalf("expected no destination files written during dry run")
+	}
+
+	// JSON mode with dry-run
+	stdout.Reset()
+	stderr.Reset()
+	code = runner.Run(context.Background(), []string{"apply", "--dry-run", "-c", "/etc/arkon/arkon.yaml", "--json"})
+	if code != ExitOK {
+		t.Fatalf("expected ExitOK (0) in JSON mode, got %d", code)
+	}
+
+	var envDry Envelope
+	if err := json.Unmarshal(stdout.Bytes(), &envDry); err != nil {
+		t.Fatalf("failed to decode JSON envelope: %v", err)
+	}
+	if !envDry.Success {
+		t.Fatal("expected success: true")
+	}
+
+	dataBytes, _ := json.Marshal(envDry.Data)
+	var applyData systemd.ApplyData
+	if err := json.Unmarshal(dataBytes, &applyData); err != nil {
+		t.Fatalf("failed to parse ApplyData: %v", err)
+	}
+
+	if !applyData.DryRun {
+		t.Errorf("expected DryRun = true")
+	}
+	if !applyData.Validated {
+		t.Errorf("expected Validated = true")
+	}
+	if applyData.SystemdReload {
+		t.Errorf("expected SystemdReload = false")
+	}
+	if applyData.TimerEnabled {
+		t.Errorf("expected TimerEnabled = false")
+	}
+	if applyData.UnitContents == nil || applyData.UnitContents["arkon-sleep.service"] == "" {
+		t.Errorf("expected unit contents in ApplyData")
+	}
+}
+
+func TestRunnerApplyRootSuccess(t *testing.T) {
+	mem := env.NewMemEnv()
+	mem.EUID = 0
+	_ = mem.WriteFile("/etc/arkon/arkon.yaml", []byte(testValidManifestYAML), 0644)
+
+	var commands []string
+	mem.ExecHandler = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		commands = append(commands, name+" "+strings.Join(args, " "))
+		return []byte("ok"), nil
+	}
+
+	runner, stdout, stderr := newTestRunner(mem)
+	code := runner.Run(context.Background(), []string{"apply", "-c", "/etc/arkon/arkon.yaml"})
+
+	if code != ExitOK {
+		t.Fatalf("expected ExitOK (0), got %d (stderr: %s)", code, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+
+	out := stdout.String()
+	if !strings.Contains(out, "✔ [4/4] Activated units: systemctl daemon-reload && systemctl enable --now arkon-sleep.timer") {
+		t.Errorf("expected activation step in stdout, got: %s", out)
+	}
+	if !strings.Contains(out, "Installation successful!") {
+		t.Errorf("expected installation successful in stdout, got: %s", out)
+	}
+
+	// Verify unit files committed
+	if _, exists := mem.Files["/etc/systemd/system/arkon-sleep.service"]; !exists {
+		t.Errorf("expected arkon-sleep.service to be written to /etc/systemd/system/")
+	}
+	if _, exists := mem.Files["/etc/systemd/system/arkon-sleep.timer"]; !exists {
+		t.Errorf("expected arkon-sleep.timer to be written to /etc/systemd/system/")
+	}
+
+	// Verify JSON output
+	stdout.Reset()
+	stderr.Reset()
+	code = runner.Run(context.Background(), []string{"apply", "-c", "/etc/arkon/arkon.yaml", "--json"})
+	if code != ExitOK {
+		t.Fatalf("expected ExitOK in JSON mode, got %d", code)
+	}
+
+	var envSuccess Envelope
+	if err := json.Unmarshal(stdout.Bytes(), &envSuccess); err != nil {
+		t.Fatalf("failed to decode JSON envelope: %v", err)
+	}
+	if !envSuccess.Success {
+		t.Fatal("expected success: true")
+	}
+
+	dataBytes, _ := json.Marshal(envSuccess.Data)
+	var applyData systemd.ApplyData
+	if err := json.Unmarshal(dataBytes, &applyData); err != nil {
+		t.Fatalf("failed to parse ApplyData: %v", err)
+	}
+	if applyData.DryRun {
+		t.Errorf("expected DryRun = false")
+	}
+	if !applyData.SystemdReload {
+		t.Errorf("expected SystemdReload = true")
+	}
+	if !applyData.TimerEnabled {
+		t.Errorf("expected TimerEnabled = true")
+	}
+}
+
+func TestRunnerApplyMissingManifestExitCode3(t *testing.T) {
+	mem := env.NewMemEnv()
+	runner, stdout, stderr := newTestRunner(mem)
+
+	code := runner.Run(context.Background(), []string{"apply"})
+	if code != ExitValidationFailure {
+		t.Fatalf("expected ExitValidationFailure (3), got %d", code)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("expected empty stdout, got: %s", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "no manifest found") {
+		t.Fatalf("expected stderr to mention no manifest found, got: %s", stderr.String())
+	}
+
+	// JSON mode
+	stdout.Reset()
+	stderr.Reset()
+	code = runner.Run(context.Background(), []string{"apply", "--json"})
+	if code != ExitValidationFailure {
+		t.Fatalf("expected ExitValidationFailure (3) in JSON mode, got %d", code)
+	}
+
+	var envErr Envelope
+	if err := json.Unmarshal(stdout.Bytes(), &envErr); err != nil {
+		t.Fatalf("failed to parse JSON envelope: %v", err)
+	}
+	if envErr.Success {
+		t.Fatal("expected success: false")
+	}
+	if envErr.Error == nil || envErr.Error.Code != "ERR_MANIFEST_LOAD" {
+		t.Fatalf("expected ERR_MANIFEST_LOAD, got: %v", envErr.Error)
+	}
+}
+
+func TestRunnerApplyVerificationErrorExitCode3(t *testing.T) {
+	mem := env.NewMemEnv()
+	_ = mem.WriteFile("/etc/arkon/arkon.yaml", []byte(testValidManifestYAML), 0644)
+	mem.ExecHandler = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		if name == "systemd-analyze" {
+			return []byte("bad unit file setting: syntax error"), errors.New("exit status 1")
+		}
+		return nil, errors.New("command not mocked")
+	}
+
+	runner, stdout, stderr := newTestRunner(mem)
+	code := runner.Run(context.Background(), []string{"apply", "--dry-run", "-c", "/etc/arkon/arkon.yaml"})
+	if code != ExitValidationFailure {
+		t.Fatalf("expected ExitValidationFailure (3), got %d (stderr: %s)", code, stderr.String())
+	}
+
+	// JSON mode
+	stdout.Reset()
+	stderr.Reset()
+	code = runner.Run(context.Background(), []string{"apply", "--dry-run", "-c", "/etc/arkon/arkon.yaml", "--json"})
+	if code != ExitValidationFailure {
+		t.Fatalf("expected ExitValidationFailure (3) in JSON mode, got %d", code)
+	}
+
+	var envErr Envelope
+	if err := json.Unmarshal(stdout.Bytes(), &envErr); err != nil {
+		t.Fatalf("failed to decode JSON envelope: %v", err)
+	}
+	if envErr.Success {
+		t.Fatal("expected success: false")
+	}
+	if envErr.Error == nil || envErr.Error.Code != "ERR_COMPILATION_FAILED" {
+		t.Fatalf("expected ERR_COMPILATION_FAILED, got: %v", envErr.Error)
 	}
 }

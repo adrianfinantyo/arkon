@@ -20,8 +20,9 @@ type MemEnv struct {
 	EUID        int
 	SyncCount   int
 	ExecHandler  func(ctx context.Context, name string, args ...string) ([]byte, error)
-	WriteHandler func(path string, data []byte, perm os.FileMode) error
-	ReadHandler  func(path string) ([]byte, error)
+	WriteHandler  func(path string, data []byte, perm os.FileMode) error
+	ReadHandler   func(path string) ([]byte, error)
+	RemoveHandler func(path string) error
 }
 
 // NewMemEnv creates an in-memory test environment.
@@ -78,6 +79,21 @@ func (m *MemEnv) ReadFile(path string) ([]byte, error) {
 	cp := make([]byte, len(data))
 	copy(cp, data)
 	return cp, nil
+}
+
+func (m *MemEnv) RemoveFile(path string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.RemoveHandler != nil {
+		return m.RemoveHandler(path)
+	}
+
+	if _, exists := m.Files[path]; !exists {
+		return os.ErrNotExist
+	}
+	delete(m.Files, path)
+	return nil
 }
 
 func (m *MemEnv) Exec(ctx context.Context, name string, args ...string) ([]byte, error) {

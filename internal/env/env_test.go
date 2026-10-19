@@ -46,6 +46,14 @@ func TestRealEnvOperations(t *testing.T) {
 		t.Fatalf("expected %q, got %q", string(testData), string(readBack))
 	}
 
+	// Verify RemoveFile
+	if err := env.RemoveFile(testPath); err != nil {
+		t.Fatalf("RemoveFile failed: %v", err)
+	}
+	if _, err := env.ReadFile(testPath); err == nil {
+		t.Fatal("expected error reading removed file in RealEnv")
+	}
+
 	// Verify Exec
 	out, err := env.Exec(context.Background(), "echo", "test-exec")
 	if err != nil {
@@ -99,6 +107,17 @@ func TestMemEnvOperations(t *testing.T) {
 	// Verify non-existent file error
 	if _, err := mem.ReadFile("/nonexistent"); err == nil {
 		t.Fatal("expected error reading nonexistent file in MemEnv")
+	}
+
+	// Verify RemoveFile
+	if err := mem.RemoveFile(path); err != nil {
+		t.Fatalf("MemEnv RemoveFile failed: %v", err)
+	}
+	if _, err := mem.ReadFile(path); err == nil {
+		t.Fatal("expected error reading removed file in MemEnv")
+	}
+	if err := mem.RemoveFile("/nonexistent"); err == nil {
+		t.Fatal("expected error removing nonexistent file in MemEnv")
 	}
 
 	// Test exec handler
