@@ -562,3 +562,32 @@ func TestManager_EnvironmentVariableRTCDevice(t *testing.T) {
 		t.Fatalf("expected device %q from ARKON_RTC_DEVICE, got %q", customRTC, status.Device)
 	}
 }
+
+func TestManager_VerboseLogging(t *testing.T) {
+	mem, _ := setupRTCEnv(t, "1700000000\n", "")
+	var buf strings.Builder
+	mgr := rtc.NewManager(mem,
+		rtc.WithVerbose(true),
+		rtc.WithLogger(&buf),
+	)
+
+	if err := mgr.ClearAlarm(); err != nil {
+		t.Fatalf("ClearAlarm failed: %v", err)
+	}
+	if !strings.Contains(buf.String(), "[rtc] clearing alarm on /sys/class/rtc/rtc0/wakealarm") {
+		t.Errorf("expected clearing alarm log, got: %s", buf.String())
+	}
+
+	buf.Reset()
+	if err := mgr.SetWakeAlarm(600); err != nil {
+		t.Fatalf("SetWakeAlarm failed: %v", err)
+	}
+	logOut := buf.String()
+	if !strings.Contains(logOut, "[rtc] programming alarm on /sys/class/rtc/rtc0/wakealarm: writing relative +600s") {
+		t.Errorf("expected programming alarm log, got: %s", logOut)
+	}
+	if !strings.Contains(logOut, "[rtc] hardware retention verified: epoch") {
+		t.Errorf("expected retention verified log, got: %s", logOut)
+	}
+}
+

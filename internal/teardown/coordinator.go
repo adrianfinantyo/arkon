@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 	"time"
@@ -68,6 +69,8 @@ type Coordinator struct {
 	drainInterval   time.Duration
 	plateauChecks   int
 	eventListener   func(TeardownEvent)
+	logger          io.Writer
+	verbose         bool
 }
 
 // CoordinatorOption customizes coordinator behavior.
@@ -112,6 +115,20 @@ func WithPlateauChecks(checks int) CoordinatorOption {
 func WithEventListener(listener func(TeardownEvent)) CoordinatorOption {
 	return func(c *Coordinator) {
 		c.eventListener = listener
+	}
+}
+
+// WithLogger configures destination writer for diagnostic logging.
+func WithLogger(w io.Writer) CoordinatorOption {
+	return func(c *Coordinator) {
+		c.logger = w
+	}
+}
+
+// WithVerbose toggles verbose diagnostic logging.
+func WithVerbose(verbose bool) CoordinatorOption {
+	return func(c *Coordinator) {
+		c.verbose = verbose
 	}
 }
 
@@ -205,10 +222,17 @@ func (c *Coordinator) StopTiers(ctx context.Context) error {
 		if trimmed == "" {
 			continue
 		}
+		if c.verbose && c.logger != nil {
+			fmt.Fprintf(c.logger, "[teardown] stopping profile tier %q (timeout: %v)\n", trimmed, timeout)
+		}
+		start := time.Now()
 		c.emit(TeardownEvent{Type: EventTierStarted, Tier: trimmed})
 		if err := c.provider.StopTier(ctx, trimmed, timeout); err != nil {
 			c.emit(TeardownEvent{Type: EventTierFailed, Tier: trimmed, Err: err})
 			return fmt.Errorf("failed to stop tier %q: %w", trimmed, err)
+		}
+		if c.verbose && c.logger != nil {
+			fmt.Fprintf(c.logger, "[teardown] profile tier %q stopped in %v\n", trimmed, time.Since(start).Round(time.Millisecond))
 		}
 		c.emit(TeardownEvent{Type: EventTierCompleted, Tier: trimmed})
 	}
@@ -223,10 +247,17 @@ func (c *Coordinator) StopResidual(ctx context.Context) error {
 	}
 
 	timeout := c.tierTimeout()
+	if c.verbose && c.logger != nil {
+		fmt.Fprintf(c.logger, "[teardown] stopping residual unprofiled containers (timeout: %v)\n", timeout)
+	}
+	start := time.Now()
 	c.emit(TeardownEvent{Type: EventResidualStarted})
 	if err := c.provider.StopResidual(ctx, timeout); err != nil {
 		c.emit(TeardownEvent{Type: EventResidualFailed, Err: err})
 		return fmt.Errorf("failed to stop residual workloads: %w", err)
+	}
+	if c.verbose && c.logger != nil {
+		fmt.Fprintf(c.logger, "[teardown] residual workloads stopped in %v\n", time.Since(start).Round(time.Millisecond))
 	}
 	c.emit(TeardownEvent{Type: EventResidualCompleted})
 	return nil
@@ -312,6 +343,9 @@ func (c *Coordinator) DrainDirtyPages(ctx context.Context) error {
 		}
 
 		c.emit(TeardownEvent{Type: EventDirtyDrainPolled, DirtyKB: dirty})
+		if c.verbose && c.logger != nil {
+			fmt.Fprintf(c.logger, "[teardown] dirty page drain check: %d kB (plateau count: %d)\n", dirty, plateauCount)
+		}
 
 		if dirty <= 0 {
 			c.emit(TeardownEvent{Type: EventDirtyDrainCompleted, DirtyKB: 0})

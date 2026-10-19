@@ -26,6 +26,7 @@ type Runner struct {
 	Stderr   io.Writer
 	Version  VersionInfo
 	StateDir string
+	Verbose  bool
 }
 
 // NewRunner creates a new CLI runner.
@@ -70,7 +71,8 @@ func (r *Runner) LoadManifest(args []string) (*manifest.Manifest, string, error)
 
 // Run executes a command based on parsed arguments and returns a standard exit code.
 func (r *Runner) Run(ctx context.Context, args []string) int {
-	jsonOutput, helpRequested, subcommand, subArgs := r.parseArgs(args)
+	jsonOutput, verbose, helpRequested, subcommand, subArgs := r.parseArgs(args)
+	r.Verbose = verbose
 
 	if helpRequested || subcommand == "help" {
 		r.printUsage(r.Stdout)
@@ -177,7 +179,7 @@ func (r *Runner) emitManifestError(err error, jsonOutput bool) int {
 	return ExitValidationFailure
 }
 
-func (r *Runner) parseArgs(args []string) (jsonOutput bool, helpRequested bool, subcommand string, subArgs []string) {
+func (r *Runner) parseArgs(args []string) (jsonOutput bool, verbose bool, helpRequested bool, subcommand string, subArgs []string) {
 	var remaining []string
 
 	for i := 0; i < len(args); i++ {
@@ -185,6 +187,8 @@ func (r *Runner) parseArgs(args []string) (jsonOutput bool, helpRequested bool, 
 		switch {
 		case arg == "--json":
 			jsonOutput = true
+		case arg == "-v" || arg == "--verbose" || arg == "--debug":
+			verbose = true
 		case arg == "-h" || arg == "--help":
 			helpRequested = true
 		case arg == "-c" || arg == "--config":
@@ -201,7 +205,7 @@ func (r *Runner) parseArgs(args []string) (jsonOutput bool, helpRequested bool, 
 		subArgs = remaining[1:]
 	}
 
-	return jsonOutput, helpRequested, subcommand, subArgs
+	return jsonOutput, verbose, helpRequested, subcommand, subArgs
 }
 
 func (r *Runner) resolveStateDir() string {
@@ -302,6 +306,7 @@ Flags:
   --dry-run             Simulate execution without modifying system state
   --force               Override daytime protection and active inhibition locks
   --json                Output typed JSON envelope
+  -v, --verbose         Enable verbose diagnostic logging (also --debug)
   -h, --help            Show help for command
 
 Exit Codes:

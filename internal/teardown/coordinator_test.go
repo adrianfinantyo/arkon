@@ -703,3 +703,40 @@ func TestExecuteHook_TimeoutEnforcement(t *testing.T) {
 	})
 }
 
+func TestCoordinator_VerboseLogging(t *testing.T) {
+	mem := env.NewMemEnv()
+	mem.Files["/proc/meminfo"] = []byte("MemTotal: 4000000 kB\nDirty: 0 kB\n")
+	mem.ExecHandler = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		return []byte("ok"), nil
+	}
+	provider := &mockProvider{}
+	m := setupTestManifest()
+
+	var buf strings.Builder
+	coord := teardown.NewCoordinator(mem, m,
+		teardown.WithProvider(provider),
+		teardown.WithVerbose(true),
+		teardown.WithLogger(&buf),
+	)
+
+	ctx := context.Background()
+	if err := coord.Teardown(ctx); err != nil {
+		t.Fatalf("Teardown failed: %v", err)
+	}
+
+	logOut := buf.String()
+	if !strings.Contains(logOut, "[teardown] stopping profile tier \"apps\"") {
+		t.Errorf("expected tier apps log, got: %s", logOut)
+	}
+	if !strings.Contains(logOut, "[teardown] profile tier \"apps\" stopped in") {
+		t.Errorf("expected tier apps completion log, got: %s", logOut)
+	}
+	if !strings.Contains(logOut, "[teardown] stopping residual unprofiled containers") {
+		t.Errorf("expected residual stop log, got: %s", logOut)
+	}
+	if !strings.Contains(logOut, "[teardown] dirty page drain check: 0 kB") {
+		t.Errorf("expected dirty page drain check log, got: %s", logOut)
+	}
+}
+
+

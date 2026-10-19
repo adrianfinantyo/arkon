@@ -3,6 +3,7 @@ package lifecycle
 import (
 	"context"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -76,6 +77,8 @@ type Coordinator struct {
 	dryRun        bool
 	clock         func() time.Time
 	eventListener func(Event)
+	logger        io.Writer
+	verbose       bool
 }
 
 // CoordinatorOption customizes coordinator behavior.
@@ -130,6 +133,20 @@ func WithEventListener(listener func(Event)) CoordinatorOption {
 	}
 }
 
+// WithLogger configures destination writer for diagnostic logging.
+func WithLogger(w io.Writer) CoordinatorOption {
+	return func(c *Coordinator) {
+		c.logger = w
+	}
+}
+
+// WithVerbose toggles verbose diagnostic logging.
+func WithVerbose(verbose bool) CoordinatorOption {
+	return func(c *Coordinator) {
+		c.verbose = verbose
+	}
+}
+
 // NewCoordinator constructs a coordinator configured from host environment and manifest settings.
 func NewCoordinator(environment env.HostEnvironment, m *manifest.Manifest, opts ...CoordinatorOption) *Coordinator {
 	if m == nil {
@@ -166,10 +183,17 @@ func NewCoordinator(environment env.HostEnvironment, m *manifest.Manifest, opts 
 				rtcOpts = append(rtcOpts, rtc.WithLocation(loc))
 			}
 		}
+		if c.verbose {
+			rtcOpts = append(rtcOpts, rtc.WithVerbose(c.verbose), rtc.WithLogger(c.logger))
+		}
 		c.rtcMgr = rtc.NewManager(environment, rtcOpts...)
 	}
 	if c.teardownCoord == nil {
-		c.teardownCoord = teardown.NewCoordinator(environment, m)
+		var tdOpts []teardown.CoordinatorOption
+		if c.verbose {
+			tdOpts = append(tdOpts, teardown.WithVerbose(c.verbose), teardown.WithLogger(c.logger))
+		}
+		c.teardownCoord = teardown.NewCoordinator(environment, m, tdOpts...)
 	}
 
 	return c
@@ -186,6 +210,11 @@ func (c *Coordinator) Execute(ctx context.Context) (*SleepResult, error) {
 		}
 	}
 	nowInLoc := now.In(loc)
+
+	if c.verbose && c.logger != nil {
+		fmt.Fprintf(c.logger, "[lifecycle] initiating sleep coordinator (force: %v, dry_run: %v)\n", c.force, c.dryRun)
+		fmt.Fprintf(c.logger, "[lifecycle] current local time: %s (timezone: %s)\n", nowInLoc.Format("2006-01-02 15:04:05 MST"), loc.String())
+	}
 
 	// 1. Evaluate daytime operational window and active locks
 	daytimeProtected := true
@@ -236,6 +265,12 @@ func (c *Coordinator) Execute(ctx context.Context) (*SleepResult, error) {
 		return nil, fmt.Errorf("circadian safety buffer violation: %w", err)
 	}
 
+	if c.verbose && c.logger != nil {
+		fmt.Fprintf(c.logger, "[lifecycle] invariants confirmed: 0 active locks, daytime clear\n")
+		fmt.Fprintf(c.logger, "[lifecycle] target wake time: %s (relative delta: +%ds)\n", nextWake.Format(time.RFC3339), deltaSec)
+		fmt.Fprintf(c.logger, "[lifecycle] target host power action: %s\n", c.manifest.Host.PowerAction)
+	}
+
 	// 3. Dry run mode
 	if c.dryRun {
 		c.emit(Event{
@@ -283,6 +318,9 @@ func (c *Coordinator) Execute(ctx context.Context) (*SleepResult, error) {
 	}
 
 	// 6. Hardware RTC wakealarm programming
+	if c.verbose && c.logger != nil {
+		fmt.Fprintf(c.logger, "[lifecycle] programming hardware RTC wakealarm for delta %ds\n", deltaSec)
+	}
 	if err := c.rtcMgr.SetWakeAlarm(deltaSec); err != nil {
 		return nil, fmt.Errorf("failed to program hardware RTC wakealarm: %w", err)
 	}
@@ -292,6 +330,9 @@ func (c *Coordinator) Execute(ctx context.Context) (*SleepResult, error) {
 	})
 
 	// 7. Host power transition
+	if c.verbose && c.logger != nil {
+		fmt.Fprintf(c.logger, "[lifecycle] executing host power action: %s\n", c.manifest.Host.PowerAction)
+	}
 	c.emit(Event{
 		Type:    EventPowerActionStarted,
 		Message: fmt.Sprintf("Initiating host power transition: systemctl %s", c.manifest.Host.PowerAction),

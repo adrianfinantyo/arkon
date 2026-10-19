@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -62,6 +63,8 @@ type Manager struct {
 	sysfsPath string
 	adjPath   string
 	location  *time.Location
+	logger    io.Writer
+	verbose   bool
 }
 
 type Option func(*Manager)
@@ -86,6 +89,20 @@ func WithLocation(loc *time.Location) Option {
 	}
 }
 
+// WithLogger configures destination writer for diagnostic logging.
+func WithLogger(w io.Writer) Option {
+	return func(m *Manager) {
+		m.logger = w
+	}
+}
+
+// WithVerbose toggles verbose diagnostic logging.
+func WithVerbose(verbose bool) Option {
+	return func(m *Manager) {
+		m.verbose = verbose
+	}
+}
+
 // NewManager initializes an RTC driver attached to the host environment seam.
 func NewManager(environment env.HostEnvironment, opts ...Option) *Manager {
 	m := &Manager{
@@ -103,11 +120,7 @@ func NewManager(environment env.HostEnvironment, opts ...Option) *Manager {
 			}
 		}
 		if m.sysfsPath == "" {
-			if val := os.Getenv("ARKON_RTC_DEVICE"); val != "" {
-				m.sysfsPath = val
-			} else {
-				m.sysfsPath = DefaultSysfsPath
-			}
+			m.sysfsPath = DefaultSysfsPath
 		}
 	}
 	return m
@@ -160,6 +173,10 @@ func (m *Manager) ClearAlarm() error {
 		}
 	}
 
+	if m.verbose && m.logger != nil {
+		fmt.Fprintf(m.logger, "[rtc] clearing alarm on %s: writing 0\n", wakePath)
+	}
+
 	if err := m.env.WriteFile(wakePath, []byte("0\n"), 0644); err != nil {
 		if os.IsPermission(err) {
 			return ErrPermissionDenied
@@ -208,6 +225,9 @@ func (m *Manager) SetWakeAlarm(deltaSeconds int64) error {
 
 	// Step 2: Write relative seconds (+<seconds>)
 	payload := fmt.Sprintf("+%d\n", deltaSeconds)
+	if m.verbose && m.logger != nil {
+		fmt.Fprintf(m.logger, "[rtc] programming alarm on %s: writing relative +%ds\n", wakePath, deltaSeconds)
+	}
 	if err := m.env.WriteFile(wakePath, []byte(payload), 0644); err != nil {
 		if os.IsPermission(err) {
 			return ErrPermissionDenied
@@ -231,6 +251,10 @@ func (m *Manager) SetWakeAlarm(deltaSeconds int64) error {
 	}
 	if epoch <= 0 {
 		return fmt.Errorf("%w: readback epoch %d is not positive", ErrAlarmRetentionFailed, epoch)
+	}
+
+	if m.verbose && m.logger != nil {
+		fmt.Fprintf(m.logger, "[rtc] hardware retention verified: epoch %d on %s\n", epoch, wakePath)
 	}
 
 	return nil

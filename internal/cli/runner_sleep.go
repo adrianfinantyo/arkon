@@ -25,14 +25,21 @@ func (r *Runner) runSleep(ctx context.Context, jsonOutput bool, args []string, m
 			force = true
 		case "--dry-run", "-n":
 			dryRun = true
+		case "--verbose", "-v", "--debug":
+			r.Verbose = true
 		}
 	}
 
-	coord := lifecycle.NewCoordinator(r.Env, m,
+	opts := []lifecycle.CoordinatorOption{
 		lifecycle.WithForce(force),
 		lifecycle.WithDryRun(dryRun),
 		lifecycle.WithStateManager(r.getStateManager()),
-	)
+	}
+	if r.Verbose {
+		opts = append(opts, lifecycle.WithVerbose(true), lifecycle.WithLogger(r.Stderr))
+	}
+
+	coord := lifecycle.NewCoordinator(r.Env, m, opts...)
 
 	result, err := coord.Execute(ctx)
 	if err != nil {

@@ -1662,3 +1662,87 @@ inhibition:
 		t.Fatalf("expected expiration at %v (4h), got %v", expectedExpires, expiresAt)
 	}
 }
+
+func TestSleepVerboseDryRunText(t *testing.T) {
+	mem := env.NewMemEnv()
+	mem.CurrentTime = time.Date(2026, 10, 19, 23, 30, 0, 0, time.UTC)
+	runner, stdout, stderr := newTestRunner(mem)
+	runner.StateDir = t.TempDir()
+
+	code := runner.Run(context.Background(), []string{"sleep", "--dry-run", "--verbose"})
+	if code != ExitOK {
+		t.Fatalf("expected ExitOK (0), got %d. stderr: %s", code, stderr.String())
+	}
+
+	errOut := stderr.String()
+	if !strings.Contains(errOut, "[lifecycle] initiating sleep coordinator") {
+		t.Errorf("expected lifecycle initiating log in stderr: %s", errOut)
+	}
+	if !strings.Contains(errOut, "[lifecycle] invariants confirmed: 0 active locks, daytime clear") {
+		t.Errorf("expected invariants confirmed log in stderr: %s", errOut)
+	}
+
+	out := stdout.String()
+	if !strings.Contains(out, "● ARKON TEARDOWN & HARDWARE SLEEP PIPELINE (DRY RUN)") {
+		t.Errorf("expected dry run header in stdout: %s", out)
+	}
+}
+
+func TestSleepDebugDryRunJSON(t *testing.T) {
+	mem := env.NewMemEnv()
+	mem.CurrentTime = time.Date(2026, 10, 19, 23, 30, 0, 0, time.UTC)
+	runner, stdout, stderr := newTestRunner(mem)
+	runner.StateDir = t.TempDir()
+
+	code := runner.Run(context.Background(), []string{"sleep", "--dry-run", "--debug", "--json"})
+	if code != ExitOK {
+		t.Fatalf("expected ExitOK (0), got %d. stderr: %s", code, stderr.String())
+	}
+
+	errOut := stderr.String()
+	if !strings.Contains(errOut, "[lifecycle] initiating sleep coordinator") {
+		t.Errorf("expected lifecycle initiating log in stderr: %s", errOut)
+	}
+
+	// Verify standard output is pure JSON and parses cleanly without stderr pollution
+	var envData Envelope
+	if err := json.Unmarshal(stdout.Bytes(), &envData); err != nil {
+		t.Fatalf("failed to parse json envelope: %v (raw stdout: %s)", err, stdout.String())
+	}
+	if !envData.Success {
+		t.Fatal("expected success: true")
+	}
+	if envData.Error != nil {
+		t.Fatalf("expected error: nil, got %v", envData.Error)
+	}
+}
+
+func TestSleepVerboseFullPipeline(t *testing.T) {
+	mem := env.NewMemEnv()
+	setupSleepMemEnv(mem)
+
+	runner, stdout, stderr := newTestRunner(mem)
+	runner.StateDir = t.TempDir()
+
+	code := runner.Run(context.Background(), []string{"sleep", "-v"})
+	if code != ExitOK {
+		t.Fatalf("expected ExitOK (0), got %d. stderr: %s", code, stderr.String())
+	}
+
+	errOut := stderr.String()
+	if !strings.Contains(errOut, "[lifecycle] initiating sleep coordinator") {
+		t.Errorf("expected lifecycle log in stderr: %s", errOut)
+	}
+	if !strings.Contains(errOut, "[teardown] stopping profile tier") {
+		t.Errorf("expected teardown log in stderr: %s", errOut)
+	}
+	if !strings.Contains(errOut, "[rtc] programming alarm") {
+		t.Errorf("expected rtc log in stderr: %s", errOut)
+	}
+
+	out := stdout.String()
+	if !strings.Contains(out, "● ARKON TEARDOWN & HARDWARE SLEEP PIPELINE") {
+		t.Errorf("expected sleep header in stdout: %s", out)
+	}
+}
+
