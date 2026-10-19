@@ -22,14 +22,11 @@ A complete architectural blueprint and technical specification for **Arkon**, de
 - [[03] Profile-Aware Container Teardown Engine](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/wayfinder/03-profile-aware-container-teardown.md): Pluggable 'TeardownProvider' seam (Docker Compose default, Podman, command/PM2), phased sequential profile stopping, residual catch-all, mandatory 'syscall.Sync()' with dirty page drain, and fail-safe abort.
 - [[04] Inhibition Locks & State Management](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/wayfinder/04-inhibition-locks-and-state-management.md): Atomic Root SSD state persistence ('/var/lib/arkon/state.json') guarded by 'flock', auto-expiring timed inhibition locks, daytime operational window protection with explicit violation messages, and exit code 2 machine contract.
 - [[05] CLI Command Surface & Terminal UX](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/wayfinder/05-cli-command-surface-and-terminal-ux.md): Single unified borderless left-rail layout (immune to terminal width/wrapping, zero dual-view bloat), actionable diagnostic error reporting, and deterministic '--json' machine contract.
+- [[09-13] Core Seam Hardening, Spec Reconciliation, Exit Codes & Verbose Diagnostics](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/): Resolved PR #14 review findings across HostEnvironment seam integrity, state corruption quarantine recovery, configurable daytime windows, binary-level exit code assertions (codes 2, 3, 4), and verbose diagnostic logging to stderr.
 
 ## Active tickets
 
-- [[09] Host Environment Seam Integrity & CLI Runner Decomposition](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/09-host-environment-seam-and-runner-decomposition.md)
-- [[10] State File Corruption Resilience & Recovery](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/10-state-file-corruption-resilience.md)
-- [[11] Spec Reconciliation & Daytime Window Configuration](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/11-spec-reconciliation-and-daytime-window-configuration.md)
-- [[12] Test Coverage Hardening & Binary-Level Exit Code Contracts](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/12-test-coverage-hardening-and-binary-contracts.md)
-- [[13] Debug and Verbose Diagnostics](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/13-debug-and-verbose-diagnostics.md)
+None. Core tickets 01 through 13 are resolved and merged into main.
 
 ## Not yet specified
 
