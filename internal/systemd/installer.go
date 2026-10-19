@@ -2,6 +2,7 @@ package systemd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/adrianfinantyo/arkon/internal/env"
 	"github.com/adrianfinantyo/arkon/internal/manifest"
+	"github.com/adrianfinantyo/arkon/internal/state"
 )
 
 // Installer manages the atomic installation, verification, and rollback of systemd units.
@@ -27,9 +29,27 @@ func (i *Installer) Install(ctx context.Context, m *manifest.Manifest, opts Inst
 		return nil, ErrInsufficientPrivileges
 	}
 
+	canonicalPath := opts.CanonicalPath
+	if canonicalPath == "" {
+		canonicalPath = "/etc/arkon/arkon.yaml"
+	}
+	absConfigPath := opts.ConfigPath
+	if absConfigPath != "" {
+		if abs, err := filepath.Abs(opts.ConfigPath); err == nil {
+			absConfigPath = abs
+		}
+	}
+
+	unitConfigPath := canonicalPath
+	if opts.ConfigPath != "" && opts.CanonicalPath != "" {
+		unitConfigPath = opts.CanonicalPath
+	} else if opts.ConfigPath != "" && (opts.DryRun || i.Env.Geteuid() != 0) {
+		unitConfigPath = opts.ConfigPath
+	}
+
 	compiled, err := Compile(m, CompileOptions{
 		BinaryPath: opts.BinaryPath,
-		ConfigPath: opts.ConfigPath,
+		ConfigPath: unitConfigPath,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("compilation failed: %w", err)
@@ -93,15 +113,17 @@ func (i *Installer) Install(ctx context.Context, m *manifest.Manifest, opts Inst
 
 	if opts.DryRun {
 		return &ApplyData{
-			Manifest:      opts.ConfigPath,
-			DryRun:        true,
-			Validated:     true,
-			Units:         unitsList,
-			UnitContents:  unitContentsMap,
-			SystemdReload: false,
-			TimerEnabled:  false,
-			BootEnabled:   compiled.BootEnabled,
-			NextTrigger:   nextTrigger,
+			Manifest:       opts.ConfigPath,
+			ActiveManifest: absConfigPath,
+			CanonicalLink:  canonicalPath,
+			DryRun:         true,
+			Validated:      true,
+			Units:          unitsList,
+			UnitContents:   unitContentsMap,
+			SystemdReload:  false,
+			TimerEnabled:   false,
+			BootEnabled:    compiled.BootEnabled,
+			NextTrigger:    nextTrigger,
 		}, nil
 	}
 
@@ -218,16 +240,43 @@ func (i *Installer) Install(ctx context.Context, m *manifest.Manifest, opts Inst
 		}
 	}
 
+	if absConfigPath != "" && absConfigPath != canonicalPath {
+		_ = i.Env.Symlink(absConfigPath, canonicalPath)
+	}
+
+	stateDir := opts.StateDir
+	if stateDir == "" {
+		stateDir = state.DefaultStateDir
+	}
+	stateFilePath := filepath.Join(stateDir, "state.json")
+	var st state.State
+	if content, err := i.Env.ReadFile(stateFilePath); err == nil && len(content) > 0 {
+		_ = json.Unmarshal(content, &st)
+	}
+	now := i.Env.Now()
+	st.ActiveManifest = absConfigPath
+	st.AppliedAt = &now
+	st.AppliedBy = opts.AppliedBy
+	if st.Locks == nil {
+		st.Locks = []state.InhibitionLock{}
+	}
+	if data, err := json.MarshalIndent(st, "", "  "); err == nil {
+		data = append(data, '\n')
+		_ = i.Env.WriteFile(stateFilePath, data, 0644)
+	}
+
 	return &ApplyData{
-		Manifest:      opts.ConfigPath,
-		DryRun:        false,
-		Validated:     true,
-		Units:         unitsList,
-		UnitContents:  unitContentsMap,
-		SystemdReload: true,
-		TimerEnabled:  true,
-		BootEnabled:   compiled.BootEnabled,
-		NextTrigger:   nextTrigger,
+		Manifest:       opts.ConfigPath,
+		ActiveManifest: absConfigPath,
+		CanonicalLink:  canonicalPath,
+		DryRun:         false,
+		Validated:      true,
+		Units:          unitsList,
+		UnitContents:   unitContentsMap,
+		SystemdReload:  true,
+		TimerEnabled:   true,
+		BootEnabled:    compiled.BootEnabled,
+		NextTrigger:    nextTrigger,
 	}, nil
 }
 

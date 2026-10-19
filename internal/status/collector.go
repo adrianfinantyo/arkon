@@ -17,7 +17,31 @@ import (
 )
 
 // Collect inspects the host environment, manifest, and runtime state to assemble StatusData.
-func Collect(ctx context.Context, hostEnv env.HostEnvironment, m *manifest.Manifest, stateDir string) (*StatusData, error) {
+// CollectOption configures StatusData properties during collection.
+type CollectOption func(*StatusData)
+
+// WithActiveManifest specifies the active manifest path.
+func WithActiveManifest(path string) CollectOption {
+	return func(d *StatusData) {
+		d.ActiveManifest = path
+	}
+}
+
+// WithManifestError specifies an error loading the active manifest.
+func WithManifestError(err string) CollectOption {
+	return func(d *StatusData) {
+		d.ManifestError = err
+	}
+}
+
+// WithDriftNotice specifies an unapplied local manifest drift notice.
+func WithDriftNotice(notice string) CollectOption {
+	return func(d *StatusData) {
+		d.DriftNotice = notice
+	}
+}
+
+func Collect(ctx context.Context, hostEnv env.HostEnvironment, m *manifest.Manifest, stateDir string, opts ...CollectOption) (*StatusData, error) {
 	if hostEnv == nil {
 		hostEnv = env.NewRealEnv()
 	}
@@ -26,6 +50,7 @@ func Collect(ctx context.Context, hostEnv env.HostEnvironment, m *manifest.Manif
 	}
 
 	data := &StatusData{
+		Configured:      m != nil,
 		HostPowerState:  "ACPI S0 (Operational Active)",
 		InhibitionLocks: []state.InhibitionLock{},
 		Teardown: TeardownStatus{
@@ -62,6 +87,10 @@ func Collect(ctx context.Context, hostEnv env.HostEnvironment, m *manifest.Manif
 	if m != nil {
 		data.Teardown = collectTeardown(m)
 		data.Hooks = collectHooks(m)
+	}
+
+	for _, opt := range opts {
+		opt(data)
 	}
 
 	return data, nil
@@ -237,6 +266,7 @@ func collectCircadian(ctx context.Context, hostEnv env.HostEnvironment, m *manif
 		return st
 	}
 
+	st.Configured = true
 	st.SleepAt = m.Circadian.SleepAt
 	st.WakeAt = m.Circadian.WakeAt
 

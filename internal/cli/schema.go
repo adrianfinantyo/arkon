@@ -174,6 +174,9 @@ func CanonicalSchema() map[string]any {
 				"type":     "object",
 				"required": []any{"locks"},
 				"properties": map[string]any{
+					"active_manifest": map[string]any{"type": "string"},
+					"applied_at":      map[string]any{"type": "string", "format": "date-time"},
+					"applied_by":      map[string]any{"type": "string"},
 					"locks": map[string]any{
 						"type": "array",
 						"items": map[string]any{

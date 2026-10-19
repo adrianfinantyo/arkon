@@ -83,6 +83,24 @@ func TestRealEnvOperations(t *testing.T) {
 	if err := env.SyncFS(); err != nil {
 		t.Fatalf("SyncFS failed: %v", err)
 	}
+
+	// Verify Symlink and Readlink
+	linkTarget := filepath.Join(tmpDir, "target.txt")
+	symlinkPath := filepath.Join(tmpDir, "symlink.txt")
+	if err := env.WriteFile(linkTarget, testData, 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+	if err := env.Symlink(linkTarget, symlinkPath); err != nil {
+		t.Fatalf("Symlink failed: %v", err)
+	}
+	target, err := env.Readlink(symlinkPath)
+	if err != nil || target != linkTarget {
+		t.Fatalf("expected target %q, got %q (err: %v)", linkTarget, target, err)
+	}
+	symlinkData, err := env.ReadFile(symlinkPath)
+	if err != nil || string(symlinkData) != string(testData) {
+		t.Fatalf("expected %q, got %q (err: %v)", string(testData), string(symlinkData), err)
+	}
 }
 
 func TestMemEnvOperations(t *testing.T) {
@@ -201,5 +219,40 @@ func TestMemEnvOperations(t *testing.T) {
 	}
 	if string(customRead) != "custom-read:/any/path" {
 		t.Fatalf("unexpected custom read: %q", string(customRead))
+	}
+}
+
+func TestMemEnvSymlinks(t *testing.T) {
+	mem := NewMemEnv()
+	realPath := "/etc/arkon/real.yaml"
+	linkPath := "/etc/arkon/arkon.yaml"
+	content := []byte("version: '1'")
+
+	if err := mem.WriteFile(realPath, content, 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+	if err := mem.Symlink(realPath, linkPath); err != nil {
+		t.Fatalf("Symlink failed: %v", err)
+	}
+
+	target, err := mem.Readlink(linkPath)
+	if err != nil || target != realPath {
+		t.Fatalf("expected %q, got %q (err: %v)", realPath, target, err)
+	}
+
+	readViaLink, err := mem.ReadFile(linkPath)
+	if err != nil || string(readViaLink) != string(content) {
+		t.Fatalf("expected %q, got %q (err: %v)", string(content), string(readViaLink), err)
+	}
+
+	if err := mem.RemoveFile(linkPath); err != nil {
+		t.Fatalf("RemoveFile on symlink failed: %v", err)
+	}
+	if _, err := mem.Readlink(linkPath); err == nil {
+		t.Fatal("expected error reading removed symlink")
+	}
+	// Target should still exist
+	if _, err := mem.ReadFile(realPath); err != nil {
+		t.Fatalf("expected real target to persist: %v", err)
 	}
 }

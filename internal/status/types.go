@@ -6,6 +6,10 @@ import (
 
 // StatusData represents the complete diagnostic data model for Arkon host status.
 type StatusData struct {
+	Configured      bool                   `json:"configured"`
+	ActiveManifest  string                 `json:"active_manifest,omitempty"`
+	ManifestError   string                 `json:"manifest_error,omitempty"`
+	DriftNotice     string                 `json:"drift_notice,omitempty"`
 	HostPowerState  string                 `json:"host_power_state"`
 	Hostname        string                 `json:"hostname"`
 	CPUArch         string                 `json:"cpu_arch"`
@@ -31,6 +35,7 @@ type RTCStatus struct {
 
 // CircadianStatus represents the daily sleep and wake policy.
 type CircadianStatus struct {
+	Configured bool   `json:"configured"`
 	SleepAt    string `json:"sleep_at"`
 	WakeAt     string `json:"wake_at"`
 	NextAction string `json:"next_action"`

@@ -16,6 +16,8 @@ type HostEnvironment interface {
 	ReadFile(path string) ([]byte, error)
 	RemoveFile(path string) error
 	RenameFile(oldPath, newPath string) error
+	Symlink(target, linkPath string) error
+	Readlink(linkPath string) (string, error)
 	Exec(ctx context.Context, name string, args ...string) ([]byte, error)
 	SyncFS() error
 	Now() time.Time

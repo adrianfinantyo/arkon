@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/adrianfinantyo/arkon/internal/manifest"
 	"github.com/adrianfinantyo/arkon/internal/systemd"
 )
 
@@ -33,9 +34,21 @@ func (r *Runner) runApply(ctx context.Context, jsonOutput bool, args []string, s
 		}
 	}
 
-	m, resolvedPath, code := r.loadAndValidateManifest(args, jsonOutput, true)
-	if code != ExitOK {
-		return code
+	explicitConfig := r.ParseConfigFlag(args)
+	stateDir := r.resolveStateDir()
+	resolvedPath, err := manifest.ResolveApplySource(r.Env, explicitConfig, stateDir)
+	if err != nil {
+		return r.emitManifestError(err, jsonOutput)
+	}
+
+	dataBytes, err := r.Env.ReadFile(resolvedPath)
+	if err != nil {
+		return r.emitManifestError(fmt.Errorf("failed to read manifest at %s: %w", resolvedPath, err), jsonOutput)
+	}
+
+	m, err := manifest.ParseAndValidate(dataBytes)
+	if err != nil {
+		return r.emitManifestError(err, jsonOutput)
 	}
 
 	if !dryRun && r.Env.Geteuid() != 0 {
@@ -46,6 +59,8 @@ func (r *Runner) runApply(ctx context.Context, jsonOutput bool, args []string, s
 	data, err := installer.Install(ctx, m, systemd.InstallOptions{
 		DryRun:     dryRun,
 		ConfigPath: resolvedPath,
+		StateDir:   stateDir,
+		AppliedBy:  r.invokingUser(),
 	})
 	if err != nil {
 		if errors.Is(err, systemd.ErrInsufficientPrivileges) {
@@ -99,10 +114,18 @@ func (r *Runner) runApply(ctx context.Context, jsonOutput bool, args []string, s
 		return ExitOK
 	}
 
+	step := 4
+	totalSteps := 4
+	if data.ActiveManifest != "" && data.ActiveManifest != data.CanonicalLink {
+		totalSteps = 5
+		fmt.Fprintf(r.Stdout, "  ✔ [%d/%d] Registered active manifest: %s -> %s\n", step, totalSteps, data.ActiveManifest, data.CanonicalLink)
+		step++
+	}
+
 	if data.BootEnabled {
-		fmt.Fprintf(r.Stdout, "  ✔ [4/4] Activated units: systemctl daemon-reload && systemctl enable --now %s && systemctl enable %s\n", systemd.DefaultTimerName, systemd.DefaultBootServiceName)
+		fmt.Fprintf(r.Stdout, "  ✔ [%d/%d] Activated units: systemctl daemon-reload && systemctl enable --now %s && systemctl enable %s\n", step, totalSteps, systemd.DefaultTimerName, systemd.DefaultBootServiceName)
 	} else {
-		fmt.Fprintf(r.Stdout, "  ✔ [4/4] Activated units: systemctl daemon-reload && systemctl enable --now %s\n", systemd.DefaultTimerName)
+		fmt.Fprintf(r.Stdout, "  ✔ [%d/%d] Activated units: systemctl daemon-reload && systemctl enable --now %s\n", step, totalSteps, systemd.DefaultTimerName)
 	}
 	fmt.Fprintf(r.Stdout, "\n  ✔ Installation successful! Next poweroff: %s\n", data.NextTrigger)
 	return ExitOK

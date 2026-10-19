@@ -99,11 +99,7 @@ func (r *Runner) Run(ctx context.Context, args []string) int {
 	case "apply":
 		return r.runApply(ctx, jsonOutput, args, subArgs)
 	case "status":
-		m, _, code := r.loadAndValidateManifest(args, jsonOutput, false)
-		if code != ExitOK {
-			return code
-		}
-		return r.runStatus(ctx, m, jsonOutput, subArgs)
+		return r.runStatus(ctx, jsonOutput, args)
 	case "inhibit":
 		m, _, code := r.loadAndValidateManifest(args, jsonOutput, false)
 		if code != ExitOK {
@@ -135,25 +131,35 @@ func (r *Runner) Run(ctx context.Context, args []string) int {
 
 func (r *Runner) loadAndValidateManifest(args []string, jsonOutput bool, required bool) (*manifest.Manifest, string, int) {
 	explicitConfig := r.ParseConfigFlag(args)
-	if explicitConfig != "" {
-		m, path, err := manifest.Load(r.Env, explicitConfig)
-		if err != nil {
+	stateDir := r.resolveStateDir()
+
+	res, err := manifest.ResolveManifest(r.Env, explicitConfig, stateDir)
+	if err != nil {
+		if required {
 			return nil, "", r.emitManifestError(err, jsonOutput)
 		}
-		return m, path, ExitOK
+		return nil, "", ExitOK
 	}
 
-	candidatePath, err := manifest.DiscoverPath(r.Env, "")
-	if err == nil {
-		m, path, err := manifest.Load(r.Env, candidatePath)
+	if res.BrokenActive {
+		err := fmt.Errorf("active host manifest at %s is missing or unreadable; restore the file or run 'sudo arkon apply -c <path>'", res.ActivePath)
+		return nil, res.ActivePath, r.emitManifestError(err, jsonOutput)
+	}
+
+	if res.Path != "" {
+		data, err := r.Env.ReadFile(res.Path)
 		if err != nil {
-			return nil, "", r.emitManifestError(err, jsonOutput)
+			return nil, res.Path, r.emitManifestError(err, jsonOutput)
 		}
-		return m, path, ExitOK
+		m, err := manifest.ParseAndValidate(data)
+		if err != nil {
+			return nil, res.Path, r.emitManifestError(err, jsonOutput)
+		}
+		return m, res.Path, ExitOK
 	}
 
 	if required {
-		return nil, "", r.emitManifestError(err, jsonOutput)
+		return nil, "", r.emitManifestError(fmt.Errorf("no manifest found"), jsonOutput)
 	}
 
 	return nil, "", ExitOK

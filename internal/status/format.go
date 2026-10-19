@@ -44,29 +44,50 @@ func FormatStatus(data *StatusData, noColor bool) string {
 	}
 	sb.WriteString(fmt.Sprintf("  Timezone:    %s\n\n", data.Timezone))
 
+	if data.DriftNotice != "" {
+		sb.WriteString(fmt.Sprintf("%s● Active Manifest Notice%s\n", bold, reset))
+		sb.WriteString(fmt.Sprintf("  %sNotice:      %s%s\n\n", yellow, data.DriftNotice, reset))
+	}
+
 	// Circadian Schedule
-	timerState := "inactive"
-	if data.CircadianTimer.Active {
-		timerState = "active"
-	}
-	timerUnit := data.CircadianTimer.TimerUnit
-	if timerUnit == "" {
-		timerUnit = "arkon-sleep.timer"
-	}
-	sb.WriteString(fmt.Sprintf("%s● Circadian Schedule%s %s(%s %s)%s\n", bold, reset, gray, timerUnit, timerState, reset))
-	if data.CircadianTimer.SleepAt != "" || data.CircadianTimer.WakeAt != "" {
-		sb.WriteString(fmt.Sprintf("  Schedule:    Sleep @ %s%s%s  |  Wake @ %s%s%s\n",
-			yellow, data.CircadianTimer.SleepAt, reset,
-			green, data.CircadianTimer.WakeAt, reset))
+	if data.ManifestError != "" {
+		sb.WriteString(fmt.Sprintf("%s● Circadian Schedule%s %s[BROKEN ACTIVE MANIFEST]%s\n", bold, reset, yellow, reset))
+		if data.ActiveManifest != "" {
+			sb.WriteString(fmt.Sprintf("  Path:        %s\n", data.ActiveManifest))
+		}
+		sb.WriteString("  Status:      Active manifest file is missing or unreadable\n")
+		sb.WriteString("  Action:      Restore the manifest or run 'sudo arkon apply -c <path>' to reconfigure\n\n")
+	} else if !data.Configured && !data.CircadianTimer.Configured && data.CircadianTimer.SleepAt == "" && data.CircadianTimer.WakeAt == "" {
+		sb.WriteString(fmt.Sprintf("%s● Circadian Schedule%s %s[NOT CONFIGURED]%s\n", bold, reset, gray, reset))
+		sb.WriteString("  Status:      No active manifest applied to this host\n")
+		sb.WriteString("  Action:      Run 'sudo arkon apply -c <path>' to configure host lifecycle\n\n")
 	} else {
-		sb.WriteString("  Schedule:    Disabled\n")
-	}
-	if data.CircadianTimer.NextTime != "" {
-		sb.WriteString(fmt.Sprintf("  Next Action: %s, %s\n\n", data.CircadianTimer.NextAction, data.CircadianTimer.NextTime))
-	} else if data.CircadianTimer.NextAction != "" {
-		sb.WriteString(fmt.Sprintf("  Next Action: %s\n\n", data.CircadianTimer.NextAction))
-	} else {
-		sb.WriteString("  Next Action: None\n\n")
+		timerState := "inactive"
+		if data.CircadianTimer.Active {
+			timerState = "active"
+		}
+		timerUnit := data.CircadianTimer.TimerUnit
+		if timerUnit == "" {
+			timerUnit = "arkon-sleep.timer"
+		}
+		sb.WriteString(fmt.Sprintf("%s● Circadian Schedule%s %s(%s %s)%s\n", bold, reset, gray, timerUnit, timerState, reset))
+		if data.ActiveManifest != "" {
+			sb.WriteString(fmt.Sprintf("  Manifest:    %s\n", data.ActiveManifest))
+		}
+		if data.CircadianTimer.SleepAt != "" || data.CircadianTimer.WakeAt != "" {
+			sb.WriteString(fmt.Sprintf("  Schedule:    Sleep @ %s%s%s  |  Wake @ %s%s%s\n",
+				yellow, data.CircadianTimer.SleepAt, reset,
+				green, data.CircadianTimer.WakeAt, reset))
+		} else {
+			sb.WriteString("  Schedule:    Disabled\n")
+		}
+		if data.CircadianTimer.NextTime != "" {
+			sb.WriteString(fmt.Sprintf("  Next Action: %s, %s\n\n", data.CircadianTimer.NextAction, data.CircadianTimer.NextTime))
+		} else if data.CircadianTimer.NextAction != "" {
+			sb.WriteString(fmt.Sprintf("  Next Action: %s\n\n", data.CircadianTimer.NextAction))
+		} else {
+			sb.WriteString("  Next Action: None\n\n")
+		}
 	}
 
 	// Hardware RTC Wakealarm

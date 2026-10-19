@@ -13,23 +13,27 @@ import (
 
 // MemEnv implements HostEnvironment in memory for deterministic unit and integration testing.
 type MemEnv struct {
-	mu            sync.RWMutex
-	Files         map[string][]byte
-	EnvVars       map[string]string
-	CurrentTime   time.Time
-	EUID          int
-	SyncCount     int
-	ExecHandler   func(ctx context.Context, name string, args ...string) ([]byte, error)
-	WriteHandler  func(path string, data []byte, perm os.FileMode) error
-	ReadHandler   func(path string) ([]byte, error)
-	RemoveHandler func(path string) error
-	RenameHandler func(oldPath, newPath string) error
+	mu              sync.RWMutex
+	Files           map[string][]byte
+	EnvVars         map[string]string
+	CurrentTime     time.Time
+	EUID            int
+	SyncCount       int
+	Symlinks        map[string]string
+	ExecHandler     func(ctx context.Context, name string, args ...string) ([]byte, error)
+	WriteHandler    func(path string, data []byte, perm os.FileMode) error
+	ReadHandler     func(path string) ([]byte, error)
+	RemoveHandler   func(path string) error
+	RenameHandler   func(oldPath, newPath string) error
+	SymlinkHandler  func(target, linkPath string) error
+	ReadlinkHandler func(linkPath string) (string, error)
 }
 
 // NewMemEnv creates an in-memory test environment.
 func NewMemEnv() *MemEnv {
 	return &MemEnv{
 		Files:       make(map[string][]byte),
+		Symlinks:    make(map[string]string),
 		EnvVars:     make(map[string]string),
 		CurrentTime: time.Now(),
 		EUID:        0,
@@ -73,7 +77,12 @@ func (m *MemEnv) ReadFile(path string) ([]byte, error) {
 		return m.ReadHandler(path)
 	}
 
-	data, exists := m.Files[path]
+	target := path
+	if link, isSymlink := m.Symlinks[path]; isSymlink {
+		target = link
+	}
+
+	data, exists := m.Files[target]
 	if !exists {
 		return nil, os.ErrNotExist
 	}
@@ -90,10 +99,13 @@ func (m *MemEnv) RemoveFile(path string) error {
 		return m.RemoveHandler(path)
 	}
 
-	if _, exists := m.Files[path]; !exists {
+	_, fileExists := m.Files[path]
+	_, linkExists := m.Symlinks[path]
+	if !fileExists && !linkExists {
 		return os.ErrNotExist
 	}
 	delete(m.Files, path)
+	delete(m.Symlinks, path)
 	return nil
 }
 
@@ -112,6 +124,36 @@ func (m *MemEnv) RenameFile(oldPath, newPath string) error {
 	delete(m.Files, oldPath)
 	m.Files[newPath] = data
 	return nil
+}
+
+func (m *MemEnv) Symlink(target, linkPath string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.SymlinkHandler != nil {
+		return m.SymlinkHandler(target, linkPath)
+	}
+
+	if m.Symlinks == nil {
+		m.Symlinks = make(map[string]string)
+	}
+	m.Symlinks[linkPath] = target
+	return nil
+}
+
+func (m *MemEnv) Readlink(linkPath string) (string, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	if m.ReadlinkHandler != nil {
+		return m.ReadlinkHandler(linkPath)
+	}
+
+	target, exists := m.Symlinks[linkPath]
+	if !exists {
+		return "", os.ErrNotExist
+	}
+	return target, nil
 }
 
 func (m *MemEnv) Exec(ctx context.Context, name string, args ...string) ([]byte, error) {

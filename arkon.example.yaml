@@ -1,4 +1,5 @@
 # Arkon Host Lifecycle Manifest (Reference Configuration)
+# Place at /etc/arkon/arkon.yaml or in your stack directory and run 'sudo arkon apply'.
 # Schema Version 1
 version: "1"
 

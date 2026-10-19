@@ -259,10 +259,26 @@ func TestDiscoveryPrecedence(t *testing.T) {
 		}
 	})
 
-	t.Run("precedence ./arkon.yml when ./arkon.yaml absent", func(t *testing.T) {
+	t.Run("precedence active host manifest over local configs", func(t *testing.T) {
+		mem := env.NewMemEnv()
+		_ = mem.WriteFile("./arkon.yml", []byte("version: 1"), 0644)
+		_ = mem.WriteFile("/etc/arkon/arkon.yaml", []byte(sampleValidYAML), 0644)
+
+		m, path, err := manifest.Load(mem, "")
+		if err != nil {
+			t.Fatalf("expected discovery to succeed, got: %v", err)
+		}
+		if path != "/etc/arkon/arkon.yaml" {
+			t.Fatalf("expected /etc/arkon/arkon.yaml as active host manifest, got %q", path)
+		}
+		if m.Host.Timezone != "Asia/Jakarta" {
+			t.Fatalf("expected timezone 'Asia/Jakarta', got %q", m.Host.Timezone)
+		}
+	})
+
+	t.Run("precedence ./arkon.yml when ./arkon.yaml and host configs absent", func(t *testing.T) {
 		mem := env.NewMemEnv()
 		_ = mem.WriteFile("./arkon.yml", []byte(sampleValidYAML), 0644)
-		_ = mem.WriteFile("/etc/arkon/arkon.yaml", []byte("version: 1"), 0644)
 
 		m, path, err := manifest.Load(mem, "")
 		if err != nil {
@@ -695,6 +711,101 @@ func TestStartupConfig(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), "startup.provider") {
 			t.Fatalf("expected error mentioning startup.provider, got: %v", err)
+		}
+	})
+}
+
+func TestResolveManifest(t *testing.T) {
+	t.Run("explicit path takes highest precedence", func(t *testing.T) {
+		mem := env.NewMemEnv()
+		_ = mem.WriteFile("/custom/arkon.yaml", []byte(sampleValidYAML), 0644)
+		_ = mem.WriteFile("/etc/arkon/arkon.yaml", []byte("version: 1"), 0644)
+
+		res, err := manifest.ResolveManifest(mem, "/custom/arkon.yaml", "")
+		if err != nil {
+			t.Fatalf("expected clean resolution: %v", err)
+		}
+		if res.Path != "/custom/arkon.yaml" || !res.IsExplicit {
+			t.Fatalf("unexpected result: %+v", res)
+		}
+	})
+
+	t.Run("active manifest from state file is prioritized over CWD", func(t *testing.T) {
+		mem := env.NewMemEnv()
+		stackPath := "/home/adrian/deployment-stack/arkon.yaml"
+		_ = mem.WriteFile(stackPath, []byte(sampleValidYAML), 0644)
+		_ = mem.WriteFile("./arkon.yaml", []byte("version: 1"), 0644)
+		_ = mem.WriteFile("/var/lib/arkon/state.json", []byte(`{"active_manifest": "/home/adrian/deployment-stack/arkon.yaml"}`), 0644)
+
+		res, err := manifest.ResolveManifest(mem, "", "/var/lib/arkon")
+		if err != nil {
+			t.Fatalf("expected clean resolution: %v", err)
+		}
+		if res.Path != stackPath || !res.IsActive {
+			t.Fatalf("expected active manifest %s, got %+v", stackPath, res)
+		}
+		if res.DriftNotice == "" {
+			t.Fatal("expected drift notice for differing local ./arkon.yaml")
+		}
+		if !strings.Contains(res.DriftNotice, "differs from active host manifest") {
+			t.Fatalf("unexpected drift notice: %s", res.DriftNotice)
+		}
+	})
+
+	t.Run("detects broken active manifest when target file missing", func(t *testing.T) {
+		mem := env.NewMemEnv()
+		missingPath := "/home/adrian/deleted-stack/arkon.yaml"
+		_ = mem.WriteFile("/var/lib/arkon/state.json", []byte(`{"active_manifest": "/home/adrian/deleted-stack/arkon.yaml"}`), 0644)
+
+		res, err := manifest.ResolveManifest(mem, "", "/var/lib/arkon")
+		if err != nil {
+			t.Fatalf("expected resolution struct returned, got error: %v", err)
+		}
+		if !res.BrokenActive || res.ActivePath != missingPath {
+			t.Fatalf("expected broken active manifest flag, got %+v", res)
+		}
+	})
+}
+
+func TestResolveApplySource(t *testing.T) {
+	t.Run("local ./arkon.yaml is prioritized to promote stack", func(t *testing.T) {
+		mem := env.NewMemEnv()
+		_ = mem.WriteFile("./arkon.yaml", []byte(sampleValidYAML), 0644)
+		_ = mem.WriteFile("/var/lib/arkon/state.json", []byte(`{"active_manifest": "/other/path/arkon.yaml"}`), 0644)
+		_ = mem.WriteFile("/other/path/arkon.yaml", []byte(sampleValidYAML), 0644)
+
+		path, err := manifest.ResolveApplySource(mem, "", "/var/lib/arkon")
+		if err != nil {
+			t.Fatalf("expected clean apply source: %v", err)
+		}
+		if path != "./arkon.yaml" {
+			t.Fatalf("expected local ./arkon.yaml to promote stack, got %q", path)
+		}
+	})
+
+	t.Run("falls back to registered active manifest for re-sync when CWD has no manifest", func(t *testing.T) {
+		mem := env.NewMemEnv()
+		activePath := "/home/adrian/deployment-stack/arkon.yaml"
+		_ = mem.WriteFile(activePath, []byte(sampleValidYAML), 0644)
+		_ = mem.WriteFile("/var/lib/arkon/state.json", []byte(`{"active_manifest": "/home/adrian/deployment-stack/arkon.yaml"}`), 0644)
+
+		path, err := manifest.ResolveApplySource(mem, "", "/var/lib/arkon")
+		if err != nil {
+			t.Fatalf("expected clean apply source: %v", err)
+		}
+		if path != activePath {
+			t.Fatalf("expected active manifest %q, got %q", activePath, path)
+		}
+	})
+
+	t.Run("fails when neither local manifest nor active manifest exists", func(t *testing.T) {
+		mem := env.NewMemEnv()
+		_, err := manifest.ResolveApplySource(mem, "", "/var/lib/arkon")
+		if err == nil {
+			t.Fatal("expected error when no manifest exists anywhere")
+		}
+		if !strings.Contains(err.Error(), "no manifest found in current directory or system state") {
+			t.Fatalf("unexpected error message: %v", err)
 		}
 	})
 }

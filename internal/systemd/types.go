@@ -39,22 +39,27 @@ type CompiledUnits struct {
 
 // InstallOptions defines configuration parameters for atomic unit installation.
 type InstallOptions struct {
-	DryRun     bool
-	TargetDir  string
-	StagingDir string
-	BinaryPath string
-	ConfigPath string
+	DryRun        bool
+	TargetDir     string
+	StagingDir    string
+	BinaryPath    string
+	ConfigPath    string
+	StateDir      string
+	CanonicalPath string
+	AppliedBy     string
 }
 
 // ApplyData represents the structured result returned by arkon apply.
 type ApplyData struct {
-	Manifest      string            `json:"manifest"`
-	DryRun        bool              `json:"dry_run"`
-	Validated     bool              `json:"validated"`
-	Units         []string          `json:"units"`
-	UnitContents  map[string]string `json:"unit_contents,omitempty"`
-	SystemdReload bool              `json:"systemd_reload"`
-	TimerEnabled  bool              `json:"timer_enabled"`
-	BootEnabled   bool              `json:"boot_enabled"`
-	NextTrigger   string            `json:"next_trigger,omitempty"`
+	Manifest       string            `json:"manifest"`
+	ActiveManifest string            `json:"active_manifest,omitempty"`
+	CanonicalLink  string            `json:"canonical_link,omitempty"`
+	DryRun         bool              `json:"dry_run"`
+	Validated      bool              `json:"validated"`
+	Units          []string          `json:"units"`
+	UnitContents   map[string]string `json:"unit_contents,omitempty"`
+	SystemdReload  bool              `json:"systemd_reload"`
+	TimerEnabled   bool              `json:"timer_enabled"`
+	BootEnabled    bool              `json:"boot_enabled"`
+	NextTrigger    string            `json:"next_trigger,omitempty"`
 }

@@ -23,7 +23,10 @@ var ErrLockNotFound = errors.New("inhibition lock not found")
 
 // State holds the runtime persisted state of Arkon.
 type State struct {
-	Locks []InhibitionLock `json:"locks"`
+	ActiveManifest string           `json:"active_manifest,omitempty"`
+	AppliedAt      *time.Time       `json:"applied_at,omitempty"`
+	AppliedBy      string           `json:"applied_by,omitempty"`
+	Locks          []InhibitionLock `json:"locks"`
 }
 
 // InhibitionLock represents a temporary override preventing automated power transitions.
@@ -187,6 +190,36 @@ func (m *Manager) ListLocks() ([]InhibitionLock, error) {
 		result = []InhibitionLock{}
 	}
 	return result, nil
+}
+
+// SetActiveManifest records the active host manifest and metadata.
+func (m *Manager) SetActiveManifest(path, appliedBy string) error {
+	return m.withFileLock(func() error {
+		st, err := m.loadAndPruneState()
+		if err != nil {
+			return err
+		}
+		now := m.now()
+		st.ActiveManifest = path
+		st.AppliedAt = &now
+		st.AppliedBy = appliedBy
+		return m.saveStateAtomic(st)
+	})
+}
+
+// GetActiveManifest retrieves the recorded active host manifest and metadata.
+func (m *Manager) GetActiveManifest() (path string, appliedAt *time.Time, appliedBy string, err error) {
+	err = m.withFileLock(func() error {
+		st, err := m.loadAndPruneState()
+		if err != nil {
+			return err
+		}
+		path = st.ActiveManifest
+		appliedAt = st.AppliedAt
+		appliedBy = st.AppliedBy
+		return nil
+	})
+	return
 }
 
 // PruneExpiredLocks removes locks whose expiration timestamp is at or before the given time.

@@ -31,3 +31,7 @@ _Avoid_: Shutdown blocker, sleep disable, pause flag
 **Manifest**:
 The declarative YAML file (`arkon.yaml`) defining stack profiles, schedules, timeouts, and lifecycle hooks as a single source of truth.
 _Avoid_: Config file, settings script, setup spec
+
+**Active Host Manifest**:
+The authoritative manifest committed to the host system by `arkon apply` that governs systemd units, RTC wakealarms, and lifecycle status across the entire machine.
+_Avoid_: Local config, directory manifest, active profile, current yaml

@@ -599,3 +599,53 @@ func TestStatusJSONSerialization(t *testing.T) {
 		t.Errorf("expected post_wake hook [post-wake], got %v", hooksMap["post_wake"])
 	}
 }
+
+func TestFormatStatusUnconfiguredAndDegraded(t *testing.T) {
+	t.Run("renders unconfigured banner when host has no active manifest", func(t *testing.T) {
+		data := &StatusData{
+			Configured:     false,
+			Hostname:       "srv-komsos",
+			HostPowerState: "ACPI S0",
+			Timezone:       "Asia/Jakarta (WIB)",
+		}
+		output := FormatStatus(data, true)
+		if !strings.Contains(output, "● Circadian Schedule [NOT CONFIGURED]") {
+			t.Errorf("expected [NOT CONFIGURED] banner, got:\n%s", output)
+		}
+		if !strings.Contains(output, "No active manifest applied to this host") {
+			t.Errorf("expected instruction notice, got:\n%s", output)
+		}
+	})
+
+	t.Run("renders broken active manifest warning", func(t *testing.T) {
+		data := &StatusData{
+			Configured:     true,
+			ActiveManifest: "/home/adrian/deleted-stack/arkon.yaml",
+			ManifestError:  "file not found",
+			Hostname:       "srv-komsos",
+		}
+		output := FormatStatus(data, true)
+		if !strings.Contains(output, "● Circadian Schedule [BROKEN ACTIVE MANIFEST]") {
+			t.Errorf("expected [BROKEN ACTIVE MANIFEST] banner, got:\n%s", output)
+		}
+		if !strings.Contains(output, "/home/adrian/deleted-stack/arkon.yaml") {
+			t.Errorf("expected missing path in output, got:\n%s", output)
+		}
+	})
+
+	t.Run("renders drift notice when local manifest differs", func(t *testing.T) {
+		data := &StatusData{
+			Configured:     true,
+			ActiveManifest: "/home/adrian/deployment-stack/arkon.yaml",
+			DriftNotice:    "Found local ./arkon.yaml that differs from active host manifest",
+			Hostname:       "srv-komsos",
+		}
+		output := FormatStatus(data, true)
+		if !strings.Contains(output, "● Active Manifest Notice") {
+			t.Errorf("expected Active Manifest Notice section, got:\n%s", output)
+		}
+		if !strings.Contains(output, "Found local ./arkon.yaml that differs from active host manifest") {
+			t.Errorf("expected drift message in output, got:\n%s", output)
+		}
+	})
+}

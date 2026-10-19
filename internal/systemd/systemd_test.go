@@ -2,6 +2,7 @@ package systemd
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/adrianfinantyo/arkon/internal/env"
 	"github.com/adrianfinantyo/arkon/internal/manifest"
+	"github.com/adrianfinantyo/arkon/internal/state"
 )
 
 func sampleManifest() *manifest.Manifest {
@@ -507,5 +509,61 @@ func TestVerifyStagedUnitsWithSystemdAnalyzeFailure(t *testing.T) {
 	}
 	if !errors.Is(err, ErrVerificationFailed) {
 		t.Fatalf("expected ErrVerificationFailed, got: %v", err)
+	}
+}
+
+func TestInstallerActiveManifestRegistration(t *testing.T) {
+	mem := env.NewMemEnv()
+	mem.EUID = 0
+	stateDir := t.TempDir()
+
+	mem.ExecHandler = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		return []byte("ok"), nil
+	}
+
+	installer := NewInstaller(mem)
+	m := sampleManifest()
+
+	sourcePath := "/home/adrian/deployment-stack/arkon.yaml"
+	mem.Files[sourcePath] = []byte("version: '1'")
+
+	data, err := installer.Install(context.Background(), m, InstallOptions{
+		DryRun:     false,
+		TargetDir:  "/etc/systemd/system",
+		ConfigPath: sourcePath,
+		StateDir:   stateDir,
+		AppliedBy:  "adrian",
+	})
+	if err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	if data.ActiveManifest != sourcePath {
+		t.Errorf("expected ActiveManifest %q, got %q", sourcePath, data.ActiveManifest)
+	}
+	if data.CanonicalLink != "/etc/arkon/arkon.yaml" {
+		t.Errorf("expected CanonicalLink /etc/arkon/arkon.yaml, got %q", data.CanonicalLink)
+	}
+
+	// Verify symlink was created in mem
+	linkTarget, err := mem.Readlink("/etc/arkon/arkon.yaml")
+	if err != nil || linkTarget != sourcePath {
+		t.Fatalf("expected symlink target %q, got %q (err: %v)", sourcePath, linkTarget, err)
+	}
+
+	// Verify state file recorded active manifest
+	stateData, err := mem.ReadFile(filepath.Join(stateDir, "state.json"))
+	if err != nil {
+		t.Fatalf("expected state file to exist in mem: %v", err)
+	}
+	var st state.State
+	if err := json.Unmarshal(stateData, &st); err != nil {
+		t.Fatalf("failed to parse state json: %v", err)
+	}
+	if st.ActiveManifest != sourcePath {
+		t.Errorf("expected recorded path %q, got %q", sourcePath, st.ActiveManifest)
+	}
+	if st.AppliedBy != "adrian" {
+		t.Errorf("expected appliedBy 'adrian', got %q", st.AppliedBy)
 	}
 }

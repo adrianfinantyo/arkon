@@ -1990,3 +1990,106 @@ hooks:
 		}
 	})
 }
+
+func TestActiveHostManifestAuthorityWorkflow(t *testing.T) {
+	mem := env.NewMemEnv()
+	mem.EUID = 0
+	mem.EnvVars["NO_COLOR"] = "1"
+	stateDir := "/var/lib/arkon"
+
+	mem.ExecHandler = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		return []byte("ok"), nil
+	}
+
+	// 1. Host is unconfigured
+	runner1, stdout1, _ := newTestRunner(mem)
+	code1 := runner1.Run(context.Background(), []string{"status"})
+	if code1 != ExitOK {
+		t.Fatalf("expected ExitOK on unconfigured status, got %d", code1)
+	}
+	if !strings.Contains(stdout1.String(), "● Circadian Schedule [NOT CONFIGURED]") {
+		t.Fatalf("expected [NOT CONFIGURED] banner, got:\n%s", stdout1.String())
+	}
+
+	// JSON check on unconfigured host
+	runner1JSON, stdout1JSON, _ := newTestRunner(mem)
+	_ = runner1JSON.Run(context.Background(), []string{"status", "--json"})
+	var unconfiguredEnv Envelope
+	_ = json.Unmarshal(stdout1JSON.Bytes(), &unconfiguredEnv)
+	var statusData map[string]any
+	statusBytes, _ := json.Marshal(unconfiguredEnv.Data)
+	_ = json.Unmarshal(statusBytes, &statusData)
+	if statusData["configured"] != false {
+		t.Errorf("expected configured = false in JSON, got: %v", statusData["configured"])
+	}
+
+	// 2. Apply a stack manifest
+	stackPath := "/home/adrian/deployment-stack/arkon.yaml"
+	mem.Files[stackPath] = []byte(testValidManifestYAML)
+
+	runner2, stdout2, stderr2 := newTestRunner(mem)
+	code2 := runner2.Run(context.Background(), []string{"apply", "-c", stackPath})
+	if code2 != ExitOK {
+		t.Fatalf("expected apply ExitOK, got %d (stderr: %s)", code2, stderr2.String())
+	}
+	if !strings.Contains(stdout2.String(), "Registered active manifest: "+stackPath) {
+		t.Fatalf("expected registered active manifest in stdout: %s", stdout2.String())
+	}
+
+	// Verify symlink created
+	linkTarget, err := mem.Readlink("/etc/arkon/arkon.yaml")
+	if err != nil || linkTarget != stackPath {
+		t.Fatalf("expected symlink target %q, got %q (err: %v)", stackPath, linkTarget, err)
+	}
+
+	// 3. Run status from another directory without local arkon.yaml
+	runner3, stdout3, _ := newTestRunner(mem)
+	code3 := runner3.Run(context.Background(), []string{"status"})
+	if code3 != ExitOK {
+		t.Fatalf("expected status ExitOK, got %d", code3)
+	}
+	if !strings.Contains(stdout3.String(), "Manifest:    "+stackPath) {
+		t.Fatalf("expected status to show active manifest %s, got:\n%s", stackPath, stdout3.String())
+	}
+	if !strings.Contains(stdout3.String(), "Sleep @ 23:00") {
+		t.Fatalf("expected status to show active circadian schedule, got:\n%s", stdout3.String())
+	}
+
+	// 4. Run status when a local ./arkon.yaml exists that differs from active
+	mem.Files["./arkon.yaml"] = []byte("version: '1'\nhost:\n  timezone: 'UTC'\n")
+	runner4, stdout4, _ := newTestRunner(mem)
+	code4 := runner4.Run(context.Background(), []string{"status"})
+	if code4 != ExitOK {
+		t.Fatalf("expected status ExitOK, got %d", code4)
+	}
+	if !strings.Contains(stdout4.String(), "● Active Manifest Notice") {
+		t.Fatalf("expected Active Manifest Notice, got:\n%s", stdout4.String())
+	}
+	if !strings.Contains(stdout4.String(), "differs from active host manifest") {
+		t.Fatalf("expected drift message, got:\n%s", stdout4.String())
+	}
+	delete(mem.Files, "./arkon.yaml")
+
+	// 5. Broken active manifest handling
+	delete(mem.Files, stackPath)
+	runner5, stdout5, _ := newTestRunner(mem)
+	code5 := runner5.Run(context.Background(), []string{"status"})
+	if code5 != ExitOK {
+		t.Fatalf("expected status ExitOK on broken manifest inspection, got %d", code5)
+	}
+	if !strings.Contains(stdout5.String(), "● Circadian Schedule [BROKEN ACTIVE MANIFEST]") {
+		t.Fatalf("expected [BROKEN ACTIVE MANIFEST] banner, got:\n%s", stdout5.String())
+	}
+
+	// Sleep aborts cleanly on broken manifest
+	runnerSleep, _, stderrSleep := newTestRunner(mem)
+	codeSleep := runnerSleep.Run(context.Background(), []string{"sleep"})
+	if codeSleep != ExitValidationFailure {
+		t.Fatalf("expected sleep ExitValidationFailure (3) on broken manifest, got %d", codeSleep)
+	}
+	if !strings.Contains(stderrSleep.String(), "is missing or unreadable") {
+		t.Fatalf("expected missing or unreadable error message: %s", stderrSleep.String())
+	}
+
+	_ = stateDir
+}

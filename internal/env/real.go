@@ -42,6 +42,19 @@ func (e *RealEnv) RenameFile(oldPath, newPath string) error {
 	return os.Rename(oldPath, newPath)
 }
 
+func (e *RealEnv) Symlink(target, linkPath string) error {
+	dir := filepath.Dir(linkPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+	_ = os.Remove(linkPath)
+	return os.Symlink(target, linkPath)
+}
+
+func (e *RealEnv) Readlink(linkPath string) (string, error) {
+	return os.Readlink(linkPath)
+}
+
 func (e *RealEnv) Exec(ctx context.Context, name string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
 	return cmd.CombinedOutput()

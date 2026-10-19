@@ -499,3 +499,39 @@ func TestStateCorruptionResilience(t *testing.T) {
 		}
 	})
 }
+
+func TestActiveManifestPersistence(t *testing.T) {
+	dir := t.TempDir()
+	fixedNow := time.Date(2026, 10, 19, 12, 0, 0, 0, time.UTC)
+	mgr := NewManager(dir, WithClock(func() time.Time { return fixedNow }))
+
+	// Before setting active manifest
+	path, appliedAt, appliedBy, err := mgr.GetActiveManifest()
+	if err != nil {
+		t.Fatalf("GetActiveManifest failed: %v", err)
+	}
+	if path != "" || appliedAt != nil || appliedBy != "" {
+		t.Fatalf("expected empty active manifest, got path=%q, by=%q", path, appliedBy)
+	}
+
+	// Set active manifest
+	manifestPath := "/home/adrian/deployment-stack/arkon.yaml"
+	if err := mgr.SetActiveManifest(manifestPath, "adrian"); err != nil {
+		t.Fatalf("SetActiveManifest failed: %v", err)
+	}
+
+	// Verify persistence
+	path, appliedAt, appliedBy, err = mgr.GetActiveManifest()
+	if err != nil {
+		t.Fatalf("GetActiveManifest after set failed: %v", err)
+	}
+	if path != manifestPath {
+		t.Fatalf("expected path %q, got %q", manifestPath, path)
+	}
+	if appliedBy != "adrian" {
+		t.Fatalf("expected appliedBy 'adrian', got %q", appliedBy)
+	}
+	if appliedAt == nil || !appliedAt.Equal(fixedNow) {
+		t.Fatalf("expected appliedAt %v, got %v", fixedNow, appliedAt)
+	}
+}

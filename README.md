@@ -151,9 +151,13 @@ inhibition:
 sudo arkon apply
 ```
 
-Arkon compiles the declarative policy into native systemd units, validates unit syntax, and enables them atomically:
-* `arkon-sleep.service` + `arkon-sleep.timer`: Runs nightly shutdown (`arkon sleep`).
-* `arkon-boot.service`: Runs morning wake orchestration (`arkon up`), executing post-wake hooks before starting container profiles.
+Running `arkon apply` promotes your manifest to the active host manifest authority:
+* It establishes a canonical link at `/etc/arkon/arkon.yaml` and records state in `/var/lib/arkon/state.json`.
+* It compiles the declarative policy into native systemd units, validates unit syntax, and enables them atomically:
+  * `arkon-sleep.service` + `arkon-sleep.timer`: Runs nightly shutdown (`arkon sleep`).
+  * `arkon-boot.service`: Runs morning wake orchestration (`arkon up`), executing post-wake hooks before starting container profiles.
+
+Once applied, `arkon status` and systemd units discover and monitor that host manifest system-wide from any directory.
 
 Inspect units safely without root:
 ```bash
