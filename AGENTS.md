@@ -32,3 +32,4 @@ Single-context domain architecture with `GLOSSARY.md` at root and ADRs in `docs/
   * Never hardcode host-specific paths or domains.
   * Keep all server-specific behavior pluggable via `arkon.yaml`.
   * Ensure all systemd unit generation logic validates unit syntax before filesystem commitment.
+  * Interact with host OS, filesystem, time, and environment variables strictly through `env.HostEnvironment`; avoid calling `os.Getenv`, `time.Now`, or raw `os` methods in domain packages.

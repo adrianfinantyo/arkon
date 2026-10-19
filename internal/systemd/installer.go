@@ -70,11 +70,11 @@ func (i *Installer) Install(ctx context.Context, m *manifest.Manifest, opts Inst
 
 	if opts.DryRun {
 		return &ApplyData{
-			Manifest:      opts.ConfigPath,
-			DryRun:        true,
-			Validated:     true,
-			Units:         []string{serviceDest, timerDest},
-			UnitContents:  map[string]string{
+			Manifest:  opts.ConfigPath,
+			DryRun:    true,
+			Validated: true,
+			Units:     []string{serviceDest, timerDest},
+			UnitContents: map[string]string{
 				compiled.ServiceName: compiled.ServiceContent,
 				compiled.TimerName:   compiled.TimerContent,
 			},
@@ -156,11 +156,11 @@ func (i *Installer) Install(ctx context.Context, m *manifest.Manifest, opts Inst
 	}
 
 	return &ApplyData{
-		Manifest:      opts.ConfigPath,
-		DryRun:        false,
-		Validated:     true,
-		Units:         []string{serviceDest, timerDest},
-		UnitContents:  map[string]string{
+		Manifest:  opts.ConfigPath,
+		DryRun:    false,
+		Validated: true,
+		Units:     []string{serviceDest, timerDest},
+		UnitContents: map[string]string{
 			compiled.ServiceName: compiled.ServiceContent,
 			compiled.TimerName:   compiled.TimerContent,
 		},

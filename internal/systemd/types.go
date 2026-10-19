@@ -12,8 +12,8 @@ const (
 // Standard systemd installation errors.
 var (
 	ErrInsufficientPrivileges = errors.New("insufficient privileges: root access (EUID == 0) required")
-	ErrInvalidManifest       = errors.New("cannot compile units from nil manifest")
-	ErrVerificationFailed    = errors.New("systemd unit verification failed")
+	ErrInvalidManifest        = errors.New("cannot compile units from nil manifest")
+	ErrVerificationFailed     = errors.New("systemd unit verification failed")
 )
 
 // CompileOptions defines inputs for unit template compilation.

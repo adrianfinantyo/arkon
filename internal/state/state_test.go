@@ -267,9 +267,9 @@ func TestDaytimeOperationalCalculation(t *testing.T) {
 	sleepAt := "23:00"
 
 	testCases := []struct {
-		name       string
-		timeStr    string // HH:MM
-		isDaytime  bool
+		name      string
+		timeStr   string // HH:MM
+		isDaytime bool
 	}{
 		{"Morning before wake", "06:30", false},
 		{"Exactly at wake time", "07:00", true},
@@ -499,4 +499,3 @@ func TestStateCorruptionResilience(t *testing.T) {
 		}
 	})
 }
-

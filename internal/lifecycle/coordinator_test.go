@@ -823,4 +823,3 @@ func TestCoordinator_DaytimeWindowOverride(t *testing.T) {
 		t.Fatalf("expected ERR_DAYTIME_PROTECTION, got: %v", err)
 	}
 }
-

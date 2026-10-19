@@ -23,8 +23,14 @@ jobs:
       - name: Verify Dependencies
         run: go mod verify
 
+      - name: Verify Formatting
+        run: test -z "$(go fmt ./...)"
+
       - name: Run go vet
         run: go vet ./...
+
+      - name: Verify Anti-Slop Guidelines
+        run: python3 scripts/deslop.py --all --force
 
       - name: Run Tests
         run: go test -v ./...

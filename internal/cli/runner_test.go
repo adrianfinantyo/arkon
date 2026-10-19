@@ -1745,4 +1745,3 @@ func TestSleepVerboseFullPipeline(t *testing.T) {
 		t.Errorf("expected sleep header in stdout: %s", out)
 	}
 }
-

@@ -9,12 +9,12 @@ import (
 
 // Manifest defines the root structure of the arkon.yaml configuration file.
 type Manifest struct {
-	Version    string            `yaml:"version" json:"version"`
-	Host       HostConfig        `yaml:"host" json:"host"`
-	Circadian  CircadianConfig   `yaml:"circadian" json:"circadian"`
-	Teardown   TeardownConfig    `yaml:"teardown" json:"teardown"`
-	Hooks      HooksConfig       `yaml:"hooks" json:"hooks"`
-	Inhibition InhibitionConfig  `yaml:"inhibition" json:"inhibition"`
+	Version    string           `yaml:"version" json:"version"`
+	Host       HostConfig       `yaml:"host" json:"host"`
+	Circadian  CircadianConfig  `yaml:"circadian" json:"circadian"`
+	Teardown   TeardownConfig   `yaml:"teardown" json:"teardown"`
+	Hooks      HooksConfig      `yaml:"hooks" json:"hooks"`
+	Inhibition InhibitionConfig `yaml:"inhibition" json:"inhibition"`
 }
 
 // HostConfig defines host-level execution and ACPI parameters.

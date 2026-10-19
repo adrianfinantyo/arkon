@@ -78,23 +78,23 @@ func TestDetectClockMode(t *testing.T) {
 			expected: rtc.ClockModeUTC,
 		},
 		{
-			name: "adjtime with UTC",
-			adjtime: "0.000000 0 0.000000\n0\nUTC\n",
+			name:     "adjtime with UTC",
+			adjtime:  "0.000000 0 0.000000\n0\nUTC\n",
 			expected: rtc.ClockModeUTC,
 		},
 		{
-			name: "adjtime with LOCAL",
-			adjtime: "0.000000 0 0.000000\n0\nLOCAL\n",
+			name:     "adjtime with LOCAL",
+			adjtime:  "0.000000 0 0.000000\n0\nLOCAL\n",
 			expected: rtc.ClockModeLocal,
 		},
 		{
-			name: "adjtime with lowercase local",
-			adjtime: "0.000000 0 0.000000\n0\nlocal\n",
+			name:     "adjtime with lowercase local",
+			adjtime:  "0.000000 0 0.000000\n0\nlocal\n",
 			expected: rtc.ClockModeLocal,
 		},
 		{
-			name: "truncated adjtime defaults to UTC",
-			adjtime: "0.000000 0 0.000000\n",
+			name:     "truncated adjtime defaults to UTC",
+			adjtime:  "0.000000 0 0.000000\n",
 			expected: rtc.ClockModeUTC,
 		},
 	}
@@ -590,4 +590,3 @@ func TestManager_VerboseLogging(t *testing.T) {
 		t.Errorf("expected retention verified log, got: %s", logOut)
 	}
 }
-

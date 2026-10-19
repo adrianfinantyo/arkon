@@ -738,5 +738,3 @@ func TestCoordinator_VerboseLogging(t *testing.T) {
 		t.Errorf("expected dirty page drain check log, got: %s", logOut)
 	}
 }
-
-

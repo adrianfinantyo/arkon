@@ -37,7 +37,6 @@ Dirty:                 0 kB
 	alarmEpoch := time.Date(2026, 10, 19, 0, 0, 0, 0, time.UTC).Unix()
 	mem.Files["/sys/class/rtc/rtc0/wakealarm"] = []byte(strconv.FormatInt(alarmEpoch, 10) + "\n")
 
-
 	// Mock state file with an active lock
 	expTime := fixedTime.Add(2 * time.Hour)
 	st := state.State{

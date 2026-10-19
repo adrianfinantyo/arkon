@@ -13,13 +13,13 @@ import (
 
 // MemEnv implements HostEnvironment in memory for deterministic unit and integration testing.
 type MemEnv struct {
-	mu          sync.RWMutex
-	Files       map[string][]byte
-	EnvVars     map[string]string
-	CurrentTime time.Time
-	EUID        int
-	SyncCount   int
-	ExecHandler  func(ctx context.Context, name string, args ...string) ([]byte, error)
+	mu            sync.RWMutex
+	Files         map[string][]byte
+	EnvVars       map[string]string
+	CurrentTime   time.Time
+	EUID          int
+	SyncCount     int
+	ExecHandler   func(ctx context.Context, name string, args ...string) ([]byte, error)
 	WriteHandler  func(path string, data []byte, perm os.FileMode) error
 	ReadHandler   func(path string) ([]byte, error)
 	RemoveHandler func(path string) error
