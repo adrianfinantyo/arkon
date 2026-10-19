@@ -410,7 +410,7 @@ func TestNoArgsJSON(t *testing.T) {
 }
 
 func TestPlaceholderSubcommands(t *testing.T) {
-	commands := []string{"apply", "status"}
+	commands := []string{"apply"}
 
 	for _, cmd := range commands {
 		t.Run(cmd+" text", func(t *testing.T) {
@@ -452,6 +452,135 @@ func TestPlaceholderSubcommands(t *testing.T) {
 				t.Fatalf("expected ERR_NOT_IMPLEMENTED, got: %v", envelope.Error)
 			}
 		})
+	}
+}
+
+func TestStatusCommandText(t *testing.T) {
+	mem := env.NewMemEnv()
+	mem.Files["/etc/hostname"] = []byte("testhost\n")
+	runner, stdout, stderr := newTestRunner(mem)
+
+	code := runner.Run(context.Background(), []string{"status"})
+	if code != ExitOK {
+		t.Fatalf("expected exit code %d, got %d. stderr: %s", ExitOK, code, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+
+	out := stdout.String()
+	expectedSubstrings := []string{
+		"● ARKON HOST STATUS",
+		"● Circadian Schedule",
+		"● Hardware RTC Wakealarm",
+		"● Workload Teardown Pipeline",
+		"● Maintenance Locks",
+		"  Host:        testhost",
+		"  Timezone:",
+	}
+	for _, sub := range expectedSubstrings {
+		if !strings.Contains(out, sub) {
+			t.Errorf("expected status output to contain %q, got:\n%s", sub, out)
+		}
+	}
+}
+
+func TestStatusCommandJSON(t *testing.T) {
+	mem := env.NewMemEnv()
+	mem.Files["/etc/hostname"] = []byte("jsonhost\n")
+	runner, stdout, stderr := newTestRunner(mem)
+
+	code := runner.Run(context.Background(), []string{"status", "--json"})
+	if code != ExitOK {
+		t.Fatalf("expected exit code %d, got %d. stderr: %s", ExitOK, code, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+
+	var envObj Envelope
+	if err := json.Unmarshal(stdout.Bytes(), &envObj); err != nil {
+		t.Fatalf("failed to decode JSON envelope: %v", err)
+	}
+	if !envObj.Success {
+		t.Fatal("expected success: true in envelope")
+	}
+
+	dataMap, ok := envObj.Data.(map[string]any)
+	if !ok {
+		t.Fatalf("expected data map in envelope, got %T", envObj.Data)
+	}
+	if dataMap["hostname"] != "jsonhost" {
+		t.Errorf("expected hostname jsonhost, got %v", dataMap["hostname"])
+	}
+	if dataMap["host_power_state"] != "ACPI S0 (Operational Active)" {
+		t.Errorf("expected host_power_state ACPI S0, got %v", dataMap["host_power_state"])
+	}
+}
+
+func TestStatusCommandUnprivileged(t *testing.T) {
+	mem := env.NewMemEnv()
+	mem.EUID = 1000
+	runner, stdout, stderr := newTestRunner(mem)
+
+	code := runner.Run(context.Background(), []string{"status"})
+	if code != ExitOK {
+		t.Fatalf("expected unprivileged status to return ExitOK, got %d. stderr: %s", code, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+	if stdout.Len() == 0 {
+		t.Fatal("expected non-empty stdout")
+	}
+}
+
+func TestStatusCommandConfigFlag(t *testing.T) {
+	mem := env.NewMemEnv()
+	configContent := `version: "1"
+host:
+  timezone: "UTC"
+circadian:
+  sleep_at: "22:00"
+  wake_at: "06:00"
+teardown:
+  profile_order:
+    - default
+`
+	mem.Files["/tmp/custom.yaml"] = []byte(configContent)
+	runner, stdout, stderr := newTestRunner(mem)
+
+	code := runner.Run(context.Background(), []string{"status", "-c", "/tmp/custom.yaml"})
+	if code != ExitOK {
+		t.Fatalf("expected exit code %d, got %d. stderr: %s", ExitOK, code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "22:00") {
+		t.Errorf("expected output to reflect custom circadian schedule 22:00, got:\n%s", stdout.String())
+	}
+}
+
+func TestStatusCommandInvalidConfig(t *testing.T) {
+	mem := env.NewMemEnv()
+	mem.Files["/tmp/invalid.yaml"] = []byte("version: \"999\"\n")
+	runner, _, stderr := newTestRunner(mem)
+
+	code := runner.Run(context.Background(), []string{"status", "-c", "/tmp/invalid.yaml"})
+	if code != ExitValidationFailure {
+		t.Fatalf("expected exit code %d, got %d. stderr: %s", ExitValidationFailure, code, stderr.String())
+	}
+}
+
+func TestStatusCommandNO_COLOR(t *testing.T) {
+	mem := env.NewMemEnv()
+	mem.EnvVars["NO_COLOR"] = "1"
+	runner, stdout, _ := newTestRunner(mem)
+
+	code := runner.Run(context.Background(), []string{"status"})
+	if code != ExitOK {
+		t.Fatalf("expected exit code %d, got %d", code, ExitOK)
+	}
+	if strings.Contains(stdout.String(), "\033[") {
+		t.Errorf("expected no ANSI color codes with NO_COLOR=1, found some in:\n%s", stdout.String())
 	}
 }
 

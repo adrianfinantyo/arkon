@@ -14,6 +14,7 @@ import (
 	"github.com/adrianfinantyo/arkon/internal/env"
 	"github.com/adrianfinantyo/arkon/internal/manifest"
 	"github.com/adrianfinantyo/arkon/internal/state"
+	"github.com/adrianfinantyo/arkon/internal/status"
 )
 
 // VersionInfo contains build-time metadata.
@@ -98,7 +99,13 @@ func (r *Runner) Run(ctx context.Context, args []string) int {
 		return r.runVersion(jsonOutput)
 	case "schema":
 		return r.runSchema(jsonOutput)
-	case "apply", "status":
+	case "status":
+		m, _, code := r.loadAndValidateManifest(args, jsonOutput)
+		if code != ExitOK {
+			return code
+		}
+		return r.runStatus(ctx, m, jsonOutput, subArgs)
+	case "apply":
 		if _, _, code := r.loadAndValidateManifest(args, jsonOutput); code != ExitOK {
 			return code
 		}
@@ -512,6 +519,61 @@ func (r *Runner) runSleep(jsonOutput bool, args []string) int {
 	}
 
 	fmt.Fprintf(r.Stdout, "✔ Sleep sequence initiated.\n")
+	return ExitOK
+}
+
+func (r *Runner) runStatus(ctx context.Context, m *manifest.Manifest, jsonOutput bool, args []string) int {
+	stateDir := r.StateDir
+	if stateDir == "" {
+		if r.Env != nil {
+			if v, ok := r.Env.LookupEnv("ARKON_STATE_DIR"); ok && v != "" {
+				stateDir = v
+			}
+		}
+		if stateDir == "" {
+			stateDir = os.Getenv("ARKON_STATE_DIR")
+		}
+		if stateDir == "" {
+			stateDir = state.DefaultStateDir
+		}
+	}
+
+	data, err := status.Collect(ctx, r.Env, m, stateDir)
+	if err != nil {
+		if jsonOutput {
+			_ = WriteJSON(r.Stdout, false, nil, &Error{
+				Code:    "ERR_STATUS_COLLECTION",
+				Message: err.Error(),
+			})
+			return ExitGeneralError
+		}
+		fmt.Fprintf(r.Stderr, "Error: %s\n", err.Error())
+		return ExitGeneralError
+	}
+
+	if jsonOutput {
+		_ = WriteJSON(r.Stdout, true, data, nil)
+		return ExitOK
+	}
+
+	noColor := false
+	if r.Env != nil {
+		if _, ok := r.Env.LookupEnv("NO_COLOR"); ok {
+			noColor = true
+		}
+	} else if os.Getenv("NO_COLOR") != "" {
+		noColor = true
+	}
+	if !noColor {
+		if f, ok := r.Stdout.(*os.File); ok {
+			if stat, err := f.Stat(); err == nil && (stat.Mode()&os.ModeCharDevice) == 0 {
+				noColor = true
+			}
+		}
+	}
+
+	output := status.FormatStatus(data, noColor)
+	fmt.Fprint(r.Stdout, output)
 	return ExitOK
 }
 
