@@ -1,9 +1,11 @@
 package state
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"testing"
@@ -405,3 +407,96 @@ func TestFormatRemaining(t *testing.T) {
 		}
 	}
 }
+
+func TestStateCorruptionResilience(t *testing.T) {
+	t.Run("zero-byte state file returns empty state", func(t *testing.T) {
+		dir := t.TempDir()
+		statePath := filepath.Join(dir, "state.json")
+		if err := os.WriteFile(statePath, []byte(""), 0644); err != nil {
+			t.Fatalf("failed to create zero-byte state file: %v", err)
+		}
+
+		mgr := NewManager(dir)
+		locks, err := mgr.ListLocks()
+		if err != nil {
+			t.Fatalf("expected nil error on zero-byte state file, got: %v", err)
+		}
+		if len(locks) != 0 {
+			t.Fatalf("expected 0 locks, got %d", len(locks))
+		}
+	})
+
+	t.Run("whitespace-only state file returns empty state", func(t *testing.T) {
+		dir := t.TempDir()
+		statePath := filepath.Join(dir, "state.json")
+		if err := os.WriteFile(statePath, []byte("   \n\t  \n"), 0644); err != nil {
+			t.Fatalf("failed to create whitespace state file: %v", err)
+		}
+
+		mgr := NewManager(dir)
+		locks, err := mgr.ListLocks()
+		if err != nil {
+			t.Fatalf("expected nil error on whitespace state file, got: %v", err)
+		}
+		if len(locks) != 0 {
+			t.Fatalf("expected 0 locks, got %d", len(locks))
+		}
+	})
+
+	t.Run("malformed state file is quarantined and clean state reset", func(t *testing.T) {
+		dir := t.TempDir()
+		statePath := filepath.Join(dir, "state.json")
+		corruptContent := []byte(`{"locks": [{"id": "inh-bad", "reason": "broken json...`)
+		if err := os.WriteFile(statePath, corruptContent, 0644); err != nil {
+			t.Fatalf("failed to write corrupted state file: %v", err)
+		}
+
+		warnBuf := &bytes.Buffer{}
+		fixedNow := time.Date(2026, 10, 19, 14, 30, 0, 0, time.UTC)
+		mgr := NewManager(dir,
+			WithClock(func() time.Time { return fixedNow }),
+			WithWarningWriter(warnBuf),
+		)
+
+		locks, err := mgr.ListLocks()
+		if err != nil {
+			t.Fatalf("expected nil error after corrupt state recovery, got: %v", err)
+		}
+		if len(locks) != 0 {
+			t.Fatalf("expected 0 locks, got %d", len(locks))
+		}
+
+		// Verify warning was logged
+		if !strings.Contains(warnBuf.String(), "corrupted state file detected and quarantined") {
+			t.Fatalf("expected quarantine warning in output, got: %s", warnBuf.String())
+		}
+
+		// Verify quarantine file exists
+		expectedQuarantine := filepath.Join(dir, "state.json.corrupt.20261019-143000")
+		quarantinedData, err := os.ReadFile(expectedQuarantine)
+		if err != nil {
+			t.Fatalf("expected quarantine file %s to exist: %v", expectedQuarantine, err)
+		}
+		if string(quarantinedData) != string(corruptContent) {
+			t.Fatalf("quarantined content mismatch: expected %q, got %q", corruptContent, quarantinedData)
+		}
+
+		// Verify subsequent acquire lock operation succeeds
+		newLock, err := mgr.AcquireLock("Post recovery maintenance", 1*time.Hour, "operator")
+		if err != nil {
+			t.Fatalf("expected lock acquisition to succeed after corruption recovery: %v", err)
+		}
+		if newLock.ID == "" {
+			t.Fatal("expected valid lock ID")
+		}
+
+		activeLocks, err := mgr.ListLocks()
+		if err != nil {
+			t.Fatalf("expected listing locks to succeed: %v", err)
+		}
+		if len(activeLocks) != 1 || activeLocks[0].ID != newLock.ID {
+			t.Fatalf("expected 1 active lock %s, got %v", newLock.ID, activeLocks)
+		}
+	})
+}
+

@@ -4,9 +4,9 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] `loadAndPruneState` in `internal/state/state.go` safely handles zero-byte files by returning an initialized state with an empty locks slice.
-- [ ] When `state.json` contains malformed or unparseable JSON, the manager backs up the corrupted file to `state.json.corrupt.<timestamp>` in the state directory and resets state cleanly.
-- [ ] Corrupted state recovery logs an actionable warning to stderr or records a diagnostic notice without crashing CLI invocations (`status`, `sleep`, `inhibit`).
-- [ ] Unit tests in `internal/state/state_test.go` exercise zero-byte files, truncated JSON chunks, and invalid syntax to verify automated quarantine and clean reset behavior.
+- [x] `loadAndPruneState` in `internal/state/state.go` safely handles zero-byte files by returning an initialized state with an empty locks slice.
+- [x] When `state.json` contains malformed or unparseable JSON, the manager backs up the corrupted file to `state.json.corrupt.<timestamp>` in the state directory and resets state cleanly.
+- [x] Corrupted state recovery logs an actionable warning to stderr or records a diagnostic notice without crashing CLI invocations (`status`, `sleep`, `inhibit`).
+- [x] Unit tests in `internal/state/state_test.go` exercise zero-byte files, truncated JSON chunks, and invalid syntax to verify automated quarantine and clean reset behavior.

@@ -1,9 +1,11 @@
 package state
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -35,10 +37,11 @@ type InhibitionLock struct {
 
 // Manager coordinates atomic access and advisory locking for Arkon state.
 type Manager struct {
-	dir       string
-	statePath string
-	lockPath  string
-	now       func() time.Time
+	dir           string
+	statePath     string
+	lockPath      string
+	now           func() time.Time
+	warningWriter io.Writer
 }
 
 // Option customizes Manager behavior.
@@ -51,6 +54,13 @@ func WithClock(clock func() time.Time) Option {
 	}
 }
 
+// WithWarningWriter configures destination writer for diagnostic warnings.
+func WithWarningWriter(w io.Writer) Option {
+	return func(m *Manager) {
+		m.warningWriter = w
+	}
+}
+
 // NewManager creates a state manager for the given directory.
 // If dir is empty, DefaultStateDir is used.
 func NewManager(dir string, opts ...Option) *Manager {
@@ -59,10 +69,11 @@ func NewManager(dir string, opts ...Option) *Manager {
 	}
 
 	mgr := &Manager{
-		dir:       dir,
-		statePath: filepath.Join(dir, "state.json"),
-		lockPath:  filepath.Join(dir, "state.lock"),
-		now:       time.Now,
+		dir:           dir,
+		statePath:     filepath.Join(dir, "state.json"),
+		lockPath:      filepath.Join(dir, "state.lock"),
+		now:           time.Now,
+		warningWriter: os.Stderr,
 	}
 
 	for _, opt := range opts {
@@ -208,9 +219,26 @@ func (m *Manager) loadAndPruneState() (*State, error) {
 		return nil, fmt.Errorf("failed to read state file %s: %w", m.statePath, err)
 	}
 
+	if len(bytes.TrimSpace(data)) == 0 {
+		return &State{Locks: []InhibitionLock{}}, nil
+	}
+
 	var st State
 	if err := json.Unmarshal(data, &st); err != nil {
-		return nil, fmt.Errorf("failed to parse state file: %w", err)
+		timestamp := m.now().Format("20060102-150405")
+		corruptPath := filepath.Join(m.dir, fmt.Sprintf("state.json.corrupt.%s", timestamp))
+		if _, statErr := os.Stat(corruptPath); statErr == nil {
+			corruptPath = filepath.Join(m.dir, fmt.Sprintf("state.json.corrupt.%s-%d", timestamp, time.Now().UnixNano()))
+		}
+		_ = os.Rename(m.statePath, corruptPath)
+
+		if m.warningWriter != nil {
+			fmt.Fprintf(m.warningWriter, "Warning: corrupted state file detected and quarantined to %s; initializing clean state\n", corruptPath)
+		}
+
+		cleanState := &State{Locks: []InhibitionLock{}}
+		_ = m.saveStateAtomic(cleanState)
+		return cleanState, nil
 	}
 
 	if st.Locks == nil {

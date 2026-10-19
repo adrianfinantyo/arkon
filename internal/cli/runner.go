@@ -222,6 +222,9 @@ func (r *Runner) getStateManager() *state.Manager {
 	if r.Env != nil {
 		opts = append(opts, state.WithClock(r.Env.Now))
 	}
+	if r.Stderr != nil {
+		opts = append(opts, state.WithWarningWriter(r.Stderr))
+	}
 	return state.NewManager(dir, opts...)
 }
 
