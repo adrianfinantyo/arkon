@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -704,6 +705,14 @@ func TestInhibitReleaseErrors(t *testing.T) {
 	}
 }
 
+func setupSleepMemEnv(mem *env.MemEnv) {
+	mem.Files["/proc/meminfo"] = []byte("MemTotal: 4000000 kB\nDirty: 0 kB\n")
+	mem.Files["/sys/class/rtc/rtc0/wakealarm"] = []byte("1700000000\n")
+	mem.ExecHandler = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		return []byte("ok"), nil
+	}
+}
+
 func TestSleepBlockedByActiveLockExit2(t *testing.T) {
 	mem := env.NewMemEnv()
 	runner, stdout, stderr := newTestRunner(mem)
@@ -739,11 +748,12 @@ func TestSleepBlockedByActiveLockExit2(t *testing.T) {
 	}
 
 	// Attempt sleep with --force -> should override and succeed
+	setupSleepMemEnv(mem)
 	stdout.Reset()
 	stderr.Reset()
 	code = runner.Run(context.Background(), []string{"sleep", "--force"})
 	if code != ExitOK {
-		t.Fatalf("expected exit code %d with --force, got %d", ExitOK, code)
+		t.Fatalf("expected exit code %d with --force, got %d. stderr: %s", ExitOK, code, stderr.String())
 	}
 }
 
@@ -777,11 +787,12 @@ func TestSleepBlockedByDaytimeWindowExit2(t *testing.T) {
 	}
 
 	// With --force
+	setupSleepMemEnv(mem)
 	stdout.Reset()
 	stderr.Reset()
 	code = runner.Run(context.Background(), []string{"sleep", "--simulate-daytime", "--force"})
 	if code != ExitOK {
-		t.Fatalf("expected exit code %d with --force, got %d", ExitOK, code)
+		t.Fatalf("expected exit code %d with --force, got %d. stderr: %s", ExitOK, code, stderr.String())
 	}
 }
 
@@ -884,3 +895,248 @@ func TestRunnerDiscoveredConfigValidationFailure(t *testing.T) {
 		t.Fatalf("expected stderr to mention 180s buffer, got: %s", stderr.String())
 	}
 }
+
+func TestSleepDryRunText(t *testing.T) {
+	mem := env.NewMemEnv()
+	runner, stdout, stderr := newTestRunner(mem)
+	runner.StateDir = t.TempDir()
+
+	code := runner.Run(context.Background(), []string{"sleep", "--dry-run"})
+	if code != ExitOK {
+		t.Fatalf("expected ExitOK (0), got %d. stderr: %s", code, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+
+	out := stdout.String()
+	if !strings.Contains(out, "● ARKON TEARDOWN & HARDWARE SLEEP PIPELINE (DRY RUN)") {
+		t.Errorf("expected dry run header in stdout: %s", out)
+	}
+	if !strings.Contains(out, "Invariants confirmed") {
+		t.Errorf("expected invariants confirmed in stdout: %s", out)
+	}
+	if !strings.Contains(out, "Workload Teardown (simulated)") {
+		t.Errorf("expected simulated teardown in stdout: %s", out)
+	}
+	if !strings.Contains(out, "Hardware Wakealarm (simulated)") {
+		t.Errorf("expected simulated wakealarm in stdout: %s", out)
+	}
+	if !strings.Contains(out, "Dry run complete") {
+		t.Errorf("expected dry run complete in stdout: %s", out)
+	}
+}
+
+func TestSleepDryRunJSON(t *testing.T) {
+	mem := env.NewMemEnv()
+	runner, stdout, stderr := newTestRunner(mem)
+	runner.StateDir = t.TempDir()
+
+	code := runner.Run(context.Background(), []string{"sleep", "--dry-run", "--json"})
+	if code != ExitOK {
+		t.Fatalf("expected ExitOK (0), got %d. stderr: %s", code, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+
+	var envData Envelope
+	if err := json.Unmarshal(stdout.Bytes(), &envData); err != nil {
+		t.Fatalf("failed to parse json envelope: %v (raw: %s)", err, stdout.String())
+	}
+	if !envData.Success {
+		t.Fatal("expected success: true")
+	}
+	if envData.Error != nil {
+		t.Fatalf("expected error: nil, got %v", envData.Error)
+	}
+
+	dataMap, ok := envData.Data.(map[string]any)
+	if !ok {
+		t.Fatalf("expected map in data, got %T", envData.Data)
+	}
+	if dataMap["dry_run"] != true {
+		t.Errorf("expected dry_run: true, got %v", dataMap["dry_run"])
+	}
+	if dataMap["status"] != "completed" {
+		t.Errorf("expected status: completed, got %v", dataMap["status"])
+	}
+	if dataMap["wakealarm_armed"] != true {
+		t.Errorf("expected wakealarm_armed: true, got %v", dataMap["wakealarm_armed"])
+	}
+}
+
+func TestSleepFullPipelineSuccess(t *testing.T) {
+	mem := env.NewMemEnv()
+	setupSleepMemEnv(mem)
+
+	var executedCmds []string
+	mem.ExecHandler = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		executedCmds = append(executedCmds, name+" "+strings.Join(args, " "))
+		return []byte("ok"), nil
+	}
+
+	runner, stdout, stderr := newTestRunner(mem)
+	runner.StateDir = t.TempDir()
+
+	code := runner.Run(context.Background(), []string{"sleep"})
+	if code != ExitOK {
+		t.Fatalf("expected ExitOK (0), got %d. stderr: %s", code, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+
+	out := stdout.String()
+	if !strings.Contains(out, "● ARKON TEARDOWN & HARDWARE SLEEP PIPELINE") {
+		t.Errorf("expected sleep pipeline header in stdout: %s", out)
+	}
+	if !strings.Contains(out, "Teardown complete") {
+		t.Errorf("expected teardown complete in stdout: %s", out)
+	}
+
+	foundPoweroff := false
+	for _, cmd := range executedCmds {
+		if strings.Contains(cmd, "systemctl poweroff") {
+			foundPoweroff = true
+			break
+		}
+	}
+	if !foundPoweroff {
+		t.Errorf("expected systemctl poweroff in executed commands: %v", executedCmds)
+	}
+}
+
+func TestSleepFullPipelineJSON(t *testing.T) {
+	mem := env.NewMemEnv()
+	setupSleepMemEnv(mem)
+
+	runner, stdout, stderr := newTestRunner(mem)
+	runner.StateDir = t.TempDir()
+
+	code := runner.Run(context.Background(), []string{"sleep", "--json"})
+	if code != ExitOK {
+		t.Fatalf("expected ExitOK (0), got %d. stderr: %s", code, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+
+	var envelope Envelope
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("failed to decode json envelope: %v", err)
+	}
+	if !envelope.Success {
+		t.Fatal("expected success: true")
+	}
+
+	dataMap := envelope.Data.(map[string]any)
+	if dataMap["disk_synced"] != true {
+		t.Errorf("expected disk_synced: true, got %v", dataMap["disk_synced"])
+	}
+	if dataMap["wakealarm_armed"] != true {
+		t.Errorf("expected wakealarm_armed: true, got %v", dataMap["wakealarm_armed"])
+	}
+	if dataMap["power_action"] != "poweroff" {
+		t.Errorf("expected power_action: poweroff, got %v", dataMap["power_action"])
+	}
+}
+
+func TestSleepWithManifestConfig(t *testing.T) {
+	mem := env.NewMemEnv()
+	setupSleepMemEnv(mem)
+
+	manifestYAML := `
+version: "1"
+host:
+  timezone: "UTC"
+  power_action: "suspend"
+circadian:
+  sleep_at: "23:00"
+  wake_at: "07:00"
+teardown:
+  profile_order: ["apps", "infra"]
+hooks:
+  pre_sleep:
+    - name: "backup-state"
+      command: "echo backing up"
+`
+	_ = mem.WriteFile("/tmp/arkon.yaml", []byte(manifestYAML), 0644)
+
+	var executedCmds []string
+	mem.ExecHandler = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		executedCmds = append(executedCmds, name+" "+strings.Join(args, " "))
+		return []byte("ok"), nil
+	}
+
+	runner, _, stderr := newTestRunner(mem)
+	runner.StateDir = t.TempDir()
+
+	code := runner.Run(context.Background(), []string{"sleep", "--config", "/tmp/arkon.yaml"})
+	if code != ExitOK {
+		t.Fatalf("expected ExitOK (0), got %d. stderr: %s", code, stderr.String())
+	}
+
+	foundHook := false
+	foundSuspend := false
+	for _, cmd := range executedCmds {
+		if strings.Contains(cmd, "echo backing up") {
+			foundHook = true
+		}
+		if strings.Contains(cmd, "systemctl suspend") {
+			foundSuspend = true
+		}
+	}
+	if !foundHook {
+		t.Errorf("expected pre-sleep hook command in executed commands: %v", executedCmds)
+	}
+	if !foundSuspend {
+		t.Errorf("expected systemctl suspend in executed commands: %v", executedCmds)
+	}
+}
+
+func TestSleepFailureExit1(t *testing.T) {
+	mem := env.NewMemEnv()
+	setupSleepMemEnv(mem)
+
+	mem.ExecHandler = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		if name == "systemctl" {
+			return []byte("permission denied"), errors.New("exit status 1")
+		}
+		return []byte("ok"), nil
+	}
+
+	t.Run("text failure", func(t *testing.T) {
+		runner, _, stderr := newTestRunner(mem)
+		runner.StateDir = t.TempDir()
+
+		code := runner.Run(context.Background(), []string{"sleep"})
+		if code != ExitGeneralError {
+			t.Fatalf("expected ExitGeneralError (1), got %d", code)
+		}
+		if !strings.Contains(stderr.String(), "ERROR (code 1)") {
+			t.Errorf("expected ERROR (code 1) in stderr: %s", stderr.String())
+		}
+	})
+
+	t.Run("json failure", func(t *testing.T) {
+		runner, stdout, _ := newTestRunner(mem)
+		runner.StateDir = t.TempDir()
+
+		code := runner.Run(context.Background(), []string{"sleep", "--json"})
+		if code != ExitGeneralError {
+			t.Fatalf("expected ExitGeneralError (1), got %d", code)
+		}
+		var envErr Envelope
+		if err := json.Unmarshal(stdout.Bytes(), &envErr); err != nil {
+			t.Fatalf("failed to decode envelope: %v", err)
+		}
+		if envErr.Success {
+			t.Fatal("expected success: false")
+		}
+		if envErr.Error == nil || envErr.Error.Code != "ERR_SLEEP_FAILED" {
+			t.Errorf("expected ERR_SLEEP_FAILED, got %v", envErr.Error)
+		}
+	})
+}
+
