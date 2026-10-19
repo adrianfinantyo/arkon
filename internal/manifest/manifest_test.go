@@ -625,3 +625,76 @@ func TestDaytimeWindowConfiguration(t *testing.T) {
 		}
 	})
 }
+
+func TestStartupConfig(t *testing.T) {
+	t.Run("defaults inherit teardown stacks and reverse profile order", func(t *testing.T) {
+		m, err := manifest.ParseAndValidate([]byte(sampleValidYAML))
+		if err != nil {
+			t.Fatalf("unexpected validation error: %v", err)
+		}
+
+		if !m.Startup.IsEnabled() {
+			t.Fatal("expected startup to be enabled by default when teardown profiles exist")
+		}
+		if m.Startup.Provider != "docker-compose" {
+			t.Errorf("expected provider docker-compose, got %s", m.Startup.Provider)
+		}
+		if m.Startup.TimeoutSeconds != 120 {
+			t.Errorf("expected timeout 120, got %d", m.Startup.TimeoutSeconds)
+		}
+		if len(m.Startup.ComposeStacks) != 1 || m.Startup.ComposeStacks[0].Path != "/opt/stacks/apps" {
+			t.Errorf("expected compose stacks inherited from teardown, got: %v", m.Startup.ComposeStacks)
+		}
+		// teardown was apps, infra -> startup should be infra, apps
+		expectedProfiles := []string{"infra", "apps"}
+		if len(m.Startup.Profiles) != len(expectedProfiles) {
+			t.Fatalf("expected %d profiles, got %d (%v)", len(expectedProfiles), len(m.Startup.Profiles), m.Startup.Profiles)
+		}
+		for i, p := range expectedProfiles {
+			if m.Startup.Profiles[i] != p {
+				t.Errorf("profile index %d: expected %s, got %s", i, p, m.Startup.Profiles[i])
+			}
+		}
+	})
+
+	t.Run("explicit startup configuration parsed cleanly", func(t *testing.T) {
+		yamlData := sampleValidYAML + `startup:
+  provider: "docker-compose"
+  timeout_seconds: 60
+  compose_stacks:
+    - path: "/home/adrian/deployment-stack"
+  profiles:
+    - "proxy"
+    - "infra"
+    - "apps"
+`
+		m, err := manifest.ParseAndValidate([]byte(yamlData))
+		if err != nil {
+			t.Fatalf("unexpected validation error: %v", err)
+		}
+
+		if m.Startup.TimeoutSeconds != 60 {
+			t.Errorf("expected timeout 60, got %d", m.Startup.TimeoutSeconds)
+		}
+		if len(m.Startup.ComposeStacks) != 1 || m.Startup.ComposeStacks[0].Path != "/home/adrian/deployment-stack" {
+			t.Errorf("unexpected compose stacks: %v", m.Startup.ComposeStacks)
+		}
+		expectedProfiles := []string{"proxy", "infra", "apps"}
+		if len(m.Startup.Profiles) != len(expectedProfiles) {
+			t.Fatalf("expected %d profiles, got %v", len(expectedProfiles), m.Startup.Profiles)
+		}
+	})
+
+	t.Run("invalid startup provider rejected", func(t *testing.T) {
+		yamlData := sampleValidYAML + `startup:
+  provider: "unsupported-provider"
+`
+		_, err := manifest.ParseAndValidate([]byte(yamlData))
+		if err == nil {
+			t.Fatal("expected invalid startup provider to be rejected")
+		}
+		if !strings.Contains(err.Error(), "startup.provider") {
+			t.Fatalf("expected error mentioning startup.provider, got: %v", err)
+		}
+	})
+}

@@ -41,8 +41,28 @@ func ValidateUnitSyntax(serviceContent, timerContent string) error {
 	return nil
 }
 
+// ValidateBootUnitSyntax verifies structural validity of the boot service unit in Go.
+func ValidateBootUnitSyntax(bootContent string) error {
+	if !strings.Contains(bootContent, "[Unit]") {
+		return fmt.Errorf("boot service unit missing [Unit] section")
+	}
+	if !strings.Contains(bootContent, "[Service]") {
+		return fmt.Errorf("boot service unit missing [Service] section")
+	}
+	if !strings.Contains(bootContent, "Type=oneshot") {
+		return fmt.Errorf("boot service unit missing Type=oneshot")
+	}
+	if !strings.Contains(bootContent, "ExecStart=") {
+		return fmt.Errorf("boot service unit missing ExecStart")
+	}
+	if !strings.Contains(bootContent, "[Install]") {
+		return fmt.Errorf("boot service unit missing [Install] section")
+	}
+	return nil
+}
+
 // VerifyStagedUnits validates the syntax of staged unit files, running systemd-analyze verify when available.
-func VerifyStagedUnits(ctx context.Context, hostEnv env.HostEnvironment, servicePath, timerPath string) error {
+func VerifyStagedUnits(ctx context.Context, hostEnv env.HostEnvironment, servicePath, timerPath string, extraUnits ...string) error {
 	serviceBytes, err := hostEnv.ReadFile(servicePath)
 	if err != nil {
 		return fmt.Errorf("cannot read staged service unit: %w", err)
@@ -56,7 +76,22 @@ func VerifyStagedUnits(ctx context.Context, hostEnv env.HostEnvironment, service
 		return fmt.Errorf("%w: %v", ErrVerificationFailed, err)
 	}
 
-	out, err := hostEnv.Exec(ctx, "systemd-analyze", "verify", servicePath, timerPath)
+	verifyArgs := []string{"verify", servicePath, timerPath}
+	for _, unitPath := range extraUnits {
+		if unitPath == "" {
+			continue
+		}
+		unitBytes, err := hostEnv.ReadFile(unitPath)
+		if err != nil {
+			return fmt.Errorf("cannot read staged unit %s: %w", unitPath, err)
+		}
+		if err := ValidateBootUnitSyntax(string(unitBytes)); err != nil {
+			return fmt.Errorf("%w: %v", ErrVerificationFailed, err)
+		}
+		verifyArgs = append(verifyArgs, unitPath)
+	}
+
+	out, err := hostEnv.Exec(ctx, "systemd-analyze", verifyArgs...)
 	if err != nil {
 		errStr := err.Error()
 		outStr := string(out)

@@ -1745,3 +1745,171 @@ func TestSleepVerboseFullPipeline(t *testing.T) {
 		t.Errorf("expected sleep header in stdout: %s", out)
 	}
 }
+
+func TestUpCommand(t *testing.T) {
+	manifestYAML := `
+version: "1"
+host:
+  timezone: "UTC"
+circadian:
+  sleep_at: "23:00"
+  wake_at: "07:00"
+teardown:
+  compose_stacks:
+    - path: "/home/adrian/deployment-stack"
+  profile_order:
+    - "apps"
+    - "infra"
+    - "proxy"
+hooks:
+  post_wake:
+    - name: "detach-failing-drive"
+      command: "echo detaching failing disk"
+`
+
+	t.Run("dry run text output", func(t *testing.T) {
+		mem := env.NewMemEnv()
+		mem.Files["/etc/arkon/arkon.yaml"] = []byte(manifestYAML)
+		runner, stdout, stderr := newTestRunner(mem)
+
+		code := runner.Run(context.Background(), []string{"up", "--dry-run"})
+		if code != ExitOK {
+			t.Fatalf("expected ExitOK (0), got %d. stderr: %s", code, stderr.String())
+		}
+
+		out := stdout.String()
+		if !strings.Contains(out, "● ARKON BOOT & WORKLOAD STARTUP (DRY RUN)") {
+			t.Errorf("expected dry run header in stdout: %s", out)
+		}
+		if !strings.Contains(out, "Post-wake hooks (simulated): detach-failing-drive") {
+			t.Errorf("expected simulated post-wake hooks in stdout: %s", out)
+		}
+		if !strings.Contains(out, "proxy → infra → apps") {
+			t.Errorf("expected reversed profile order in stdout: %s", out)
+		}
+		if !strings.Contains(out, "Dry run complete") {
+			t.Errorf("expected dry run complete message: %s", out)
+		}
+	})
+
+	t.Run("dry run json output", func(t *testing.T) {
+		mem := env.NewMemEnv()
+		mem.Files["/etc/arkon/arkon.yaml"] = []byte(manifestYAML)
+		runner, stdout, stderr := newTestRunner(mem)
+
+		code := runner.Run(context.Background(), []string{"up", "--dry-run", "--json"})
+		if code != ExitOK {
+			t.Fatalf("expected ExitOK (0), got %d. stderr: %s", code, stderr.String())
+		}
+
+		var envData Envelope
+		if err := json.Unmarshal(stdout.Bytes(), &envData); err != nil {
+			t.Fatalf("failed to parse json envelope: %v (raw stdout: %s)", err, stdout.String())
+		}
+		if !envData.Success {
+			t.Fatal("expected success: true")
+		}
+		if envData.Error != nil {
+			t.Fatalf("expected error: nil, got %v", envData.Error)
+		}
+	})
+
+	t.Run("live execution with hooks and compose start", func(t *testing.T) {
+		mem := env.NewMemEnv()
+		mem.Files["/etc/arkon/arkon.yaml"] = []byte(manifestYAML)
+
+		var executed []string
+		mem.ExecHandler = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+			executed = append(executed, name+" "+strings.Join(args, " "))
+			return []byte("ok"), nil
+		}
+
+		runner, stdout, stderr := newTestRunner(mem)
+		code := runner.Run(context.Background(), []string{"up"})
+		if code != ExitOK {
+			t.Fatalf("expected ExitOK (0), got %d. stderr: %s", code, stderr.String())
+		}
+
+		out := stdout.String()
+		if !strings.Contains(out, "● ARKON BOOT & WORKLOAD STARTUP") {
+			t.Errorf("expected startup header in stdout: %s", out)
+		}
+		if !strings.Contains(out, "Executed post-wake hooks (1 hooks): detach-failing-drive") {
+			t.Errorf("expected executed hooks in stdout: %s", out)
+		}
+		if !strings.Contains(out, "Started container profiles: proxy → infra → apps") {
+			t.Errorf("expected started profiles in stdout: %s", out)
+		}
+
+		if len(executed) < 2 {
+			t.Fatalf("expected at least 2 commands executed, got %d: %v", len(executed), executed)
+		}
+		if !strings.Contains(executed[0], "echo detaching failing disk") {
+			t.Errorf("expected post-wake hook executed first, got: %s", executed[0])
+		}
+		if !strings.Contains(executed[1], "docker compose") || !strings.Contains(executed[1], "up -d") {
+			t.Errorf("expected docker compose up -d executed, got: %s", executed[1])
+		}
+	})
+
+	t.Run("verbose logging to stderr", func(t *testing.T) {
+		mem := env.NewMemEnv()
+		mem.Files["/etc/arkon/arkon.yaml"] = []byte(manifestYAML)
+		mem.ExecHandler = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+			return []byte("ok"), nil
+		}
+
+		runner, _, stderr := newTestRunner(mem)
+		code := runner.Run(context.Background(), []string{"up", "-v"})
+		if code != ExitOK {
+			t.Fatalf("expected ExitOK (0), got %d. stderr: %s", code, stderr.String())
+		}
+
+		errOut := stderr.String()
+		if !strings.Contains(errOut, "[startup] initiating boot coordinator") {
+			t.Errorf("expected startup initiating log in stderr: %s", errOut)
+		}
+		if !strings.Contains(errOut, "[startup] executing post-wake hook") {
+			t.Errorf("expected post-wake hook log in stderr: %s", errOut)
+		}
+		if !strings.Contains(errOut, "[startup] starting stack") {
+			t.Errorf("expected starting stack log in stderr: %s", errOut)
+		}
+	})
+
+	t.Run("hook error failure", func(t *testing.T) {
+		mem := env.NewMemEnv()
+		mem.Files["/etc/arkon/arkon.yaml"] = []byte(manifestYAML)
+		mem.ExecHandler = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+			if strings.Contains(strings.Join(args, " "), "echo detaching") {
+				return nil, errors.New("command failed: permission denied")
+			}
+			return []byte("ok"), nil
+		}
+
+		runner, _, stderr := newTestRunner(mem)
+		code := runner.Run(context.Background(), []string{"up"})
+		if code != ExitGeneralError {
+			t.Fatalf("expected ExitGeneralError (1), got %d", code)
+		}
+		if !strings.Contains(stderr.String(), "ERROR (code 1): Startup sequence failed") {
+			t.Errorf("expected error message in stderr: %s", stderr.String())
+		}
+
+		runnerJSON, stdoutJSON, _ := newTestRunner(mem)
+		codeJSON := runnerJSON.Run(context.Background(), []string{"up", "--json"})
+		if codeJSON != ExitGeneralError {
+			t.Fatalf("expected ExitGeneralError (1), got %d", codeJSON)
+		}
+		var envData Envelope
+		if err := json.Unmarshal(stdoutJSON.Bytes(), &envData); err != nil {
+			t.Fatalf("failed to parse json envelope: %v", err)
+		}
+		if envData.Success {
+			t.Errorf("expected success: false")
+		}
+		if envData.Error == nil || envData.Error.Code != "ERR_STARTUP_FAILED" {
+			t.Errorf("expected ERR_STARTUP_FAILED, got: %v", envData.Error)
+		}
+	})
+}

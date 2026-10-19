@@ -122,6 +122,12 @@ func (r *Runner) Run(ctx context.Context, args []string) int {
 			return code
 		}
 		return r.runWake(ctx, jsonOutput, subArgs, m)
+	case "up":
+		m, _, code := r.loadAndValidateManifest(args, jsonOutput, false)
+		if code != ExitOK {
+			return code
+		}
+		return r.runUp(ctx, jsonOutput, subArgs, m)
 	default:
 		return r.runUnknown(subcommand, jsonOutput)
 	}
@@ -295,6 +301,7 @@ Available Commands:
   apply      Compile arkon.yaml and sync host systemd units
   status     Display host power state, RTC alarm, and timer status
   sleep      Execute graceful profile teardown and program RTC wakealarm
+  up         Execute post-wake hooks and start declared container workloads
   wake       Execute post-wake lifecycle hooks
   inhibit    Temporarily pause automated scheduled shutdown
   schema     Emit canonical JSON Schema (Draft 2020-12) for manifests and state

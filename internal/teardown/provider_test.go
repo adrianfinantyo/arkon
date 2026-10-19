@@ -169,7 +169,7 @@ func TestDockerComposeProvider_StopTier(t *testing.T) {
 }
 
 func TestDockerComposeProvider_StopResidual(t *testing.T) {
-	t.Run("executes catch-all stop without profile flag for single stack", func(t *testing.T) {
+	t.Run("executes catch-all stop with wildcard profile flag for single stack", func(t *testing.T) {
 		mem := env.NewMemEnv()
 		var executedCommands [][]string
 		mem.ExecHandler = func(ctx context.Context, name string, args ...string) ([]byte, error) {
@@ -187,7 +187,7 @@ func TestDockerComposeProvider_StopResidual(t *testing.T) {
 			t.Fatalf("expected 1 command executed, got %d", len(executedCommands))
 		}
 
-		expected := []string{"docker", "compose", "--project-directory", "/opt/stacks/apps", "stop", "-t", "20"}
+		expected := []string{"docker", "compose", "--project-directory", "/opt/stacks/apps", "--profile", "*", "stop", "-t", "20"}
 		got := executedCommands[0]
 		if len(got) != len(expected) {
 			t.Fatalf("expected command %v, got %v", expected, got)
@@ -217,7 +217,7 @@ func TestDockerComposeProvider_StopResidual(t *testing.T) {
 			t.Fatalf("expected 1 command executed, got %d", len(executedCommands))
 		}
 
-		expected := []string{"docker", "compose", "stop", "-t", "15"}
+		expected := []string{"docker", "compose", "--profile", "*", "stop", "-t", "15"}
 		got := executedCommands[0]
 		if len(got) != len(expected) {
 			t.Fatalf("expected command %v, got %v", expected, got)

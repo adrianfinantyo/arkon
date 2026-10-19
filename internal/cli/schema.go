@@ -90,6 +90,39 @@ func CanonicalSchema() map[string]any {
 							},
 						},
 					},
+					"startup": map[string]any{
+						"type": "object",
+						"properties": map[string]any{
+							"enabled": map[string]any{
+								"type": "boolean",
+							},
+							"provider": map[string]any{
+								"type":    "string",
+								"enum":    []any{"docker-compose", "podman-compose", "command", "systemd"},
+								"default": "docker-compose",
+							},
+							"timeout_seconds": map[string]any{
+								"type":    "integer",
+								"default": 120,
+							},
+							"compose_stacks": map[string]any{
+								"type": "array",
+								"items": map[string]any{
+									"type":     "object",
+									"required": []any{"path"},
+									"properties": map[string]any{
+										"path": map[string]any{"type": "string"},
+									},
+								},
+							},
+							"profiles": map[string]any{
+								"type": "array",
+								"items": map[string]any{
+									"type": "string",
+								},
+							},
+						},
+					},
 					"hooks": map[string]any{
 						"type": "object",
 						"properties": map[string]any{

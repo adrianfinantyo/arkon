@@ -30,6 +30,27 @@ func (m *Manifest) ApplyDefaults() {
 		m.Teardown.TimeoutSeconds = 30
 	}
 
+	if m.Startup.Provider == "" {
+		if m.Teardown.Provider != "" {
+			m.Startup.Provider = m.Teardown.Provider
+		} else {
+			m.Startup.Provider = "docker-compose"
+		}
+	}
+	if m.Startup.TimeoutSeconds <= 0 {
+		m.Startup.TimeoutSeconds = 120
+	}
+	if len(m.Startup.ComposeStacks) == 0 && len(m.Teardown.ComposeStacks) > 0 {
+		m.Startup.ComposeStacks = make([]ComposeStack, len(m.Teardown.ComposeStacks))
+		copy(m.Startup.ComposeStacks, m.Teardown.ComposeStacks)
+	}
+	if len(m.Startup.Profiles) == 0 && len(m.Teardown.ProfileOrder) > 0 {
+		m.Startup.Profiles = make([]string, len(m.Teardown.ProfileOrder))
+		for i, p := range m.Teardown.ProfileOrder {
+			m.Startup.Profiles[len(m.Teardown.ProfileOrder)-1-i] = p
+		}
+	}
+
 	applyHookDefaults(m.Hooks.PreTeardown)
 	applyHookDefaults(m.Hooks.PostTeardown)
 	applyHookDefaults(m.Hooks.PreSleep)

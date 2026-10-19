@@ -85,6 +85,20 @@ func TestCompileValidManifest(t *testing.T) {
 	if !strings.Contains(compiled.TimerContent, "WantedBy=timers.target") {
 		t.Errorf("expected WantedBy=timers.target in timer unit")
 	}
+
+	// Verify Boot service content
+	if !compiled.BootEnabled {
+		t.Errorf("expected BootEnabled = true")
+	}
+	if !strings.Contains(compiled.BootServiceContent, "Type=oneshot") {
+		t.Errorf("expected Type=oneshot in boot service unit")
+	}
+	if !strings.Contains(compiled.BootServiceContent, "ExecStart=/usr/local/bin/arkon up --config /etc/arkon/arkon.yaml") {
+		t.Errorf("expected ExecStart in boot service unit, got:\n%s", compiled.BootServiceContent)
+	}
+	if !strings.Contains(compiled.BootServiceContent, "WantedBy=multi-user.target") {
+		t.Errorf("expected WantedBy=multi-user.target in boot service unit")
+	}
 }
 
 func TestFormatOnCalendar(t *testing.T) {
@@ -266,6 +280,7 @@ func TestInstallerAtomicInstallSuccess(t *testing.T) {
 	// Verify unit files exist in destination
 	svcPath := filepath.Join(targetDir, DefaultServiceName)
 	tmrPath := filepath.Join(targetDir, DefaultTimerName)
+	bootPath := filepath.Join(targetDir, DefaultBootServiceName)
 
 	if _, exists := mem.Files[svcPath]; !exists {
 		t.Fatalf("expected service unit at %s", svcPath)
@@ -273,10 +288,13 @@ func TestInstallerAtomicInstallSuccess(t *testing.T) {
 	if _, exists := mem.Files[tmrPath]; !exists {
 		t.Fatalf("expected timer unit at %s", tmrPath)
 	}
+	if _, exists := mem.Files[bootPath]; !exists {
+		t.Fatalf("expected boot unit at %s", bootPath)
+	}
 
 	// Verify commands
-	if len(commandsExecuted) != 3 {
-		t.Fatalf("expected 3 commands, got %v", commandsExecuted)
+	if len(commandsExecuted) != 4 {
+		t.Fatalf("expected 4 commands, got %v", commandsExecuted)
 	}
 	if !strings.HasPrefix(commandsExecuted[0], "systemd-analyze verify ") {
 		t.Errorf("command 0: expected systemd-analyze verify, got %q", commandsExecuted[0])
@@ -286,6 +304,9 @@ func TestInstallerAtomicInstallSuccess(t *testing.T) {
 	}
 	if commandsExecuted[2] != "systemctl enable --now arkon-sleep.timer" {
 		t.Errorf("command 2: expected systemctl enable --now arkon-sleep.timer, got %q", commandsExecuted[2])
+	}
+	if commandsExecuted[3] != "systemctl enable arkon-boot.service" {
+		t.Errorf("command 3: expected systemctl enable arkon-boot.service, got %q", commandsExecuted[3])
 	}
 }
 
