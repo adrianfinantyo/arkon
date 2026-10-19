@@ -33,6 +33,19 @@ func Collect(ctx context.Context, hostEnv env.HostEnvironment, m *manifest.Manif
 			ProfileOrder: []string{},
 			Stacks:       []string{},
 		},
+		Startup: StartupStatus{
+			Provider:    "docker-compose",
+			Profiles:    []string{},
+			Stacks:      []string{},
+			BootUnit:    "inactive",
+			BootEnabled: false,
+		},
+		Hooks: HooksStatus{
+			PreTeardown:  []string{},
+			PostTeardown: []string{},
+			PreSleep:     []string{},
+			PostWake:     []string{},
+		},
 	}
 
 	data.Hostname = collectHostname(hostEnv)
@@ -44,9 +57,11 @@ func Collect(ctx context.Context, hostEnv env.HostEnvironment, m *manifest.Manif
 	data.RTCWakeAlarm = collectRTC(hostEnv, m, loc)
 	data.CircadianTimer = collectCircadian(ctx, hostEnv, m, loc)
 	data.InhibitionLocks = collectLocks(hostEnv, stateDir)
+	data.Startup = collectStartup(ctx, hostEnv, m)
 
 	if m != nil {
 		data.Teardown = collectTeardown(m)
+		data.Hooks = collectHooks(m)
 	}
 
 	return data, nil
@@ -366,4 +381,99 @@ func collectTeardown(m *manifest.Manifest) TeardownStatus {
 		StackCount:   len(m.Teardown.ComposeStacks),
 		Stacks:       stacks,
 	}
+}
+
+func collectStartup(ctx context.Context, hostEnv env.HostEnvironment, m *manifest.Manifest) StartupStatus {
+	st := StartupStatus{
+		Provider:    "docker-compose",
+		Profiles:    []string{},
+		Stacks:      []string{},
+		BootUnit:    "inactive",
+		BootEnabled: false,
+	}
+
+	if hostEnv != nil {
+		out, _ := hostEnv.Exec(ctx, "systemctl", "is-enabled", "arkon-boot.service")
+		trimmed := strings.TrimSpace(string(out))
+		if trimmed != "" {
+			st.BootUnit = trimmed
+			if trimmed == "enabled" {
+				st.BootEnabled = true
+			}
+		}
+	}
+
+	if m == nil {
+		return st
+	}
+
+	provider := m.Startup.Provider
+	if provider == "" {
+		if m.Teardown.Provider != "" {
+			provider = m.Teardown.Provider
+		} else {
+			provider = "docker-compose"
+		}
+	}
+	st.Provider = provider
+
+	profiles := m.Startup.Profiles
+	if len(profiles) == 0 && len(m.Teardown.ProfileOrder) > 0 {
+		profiles = make([]string, len(m.Teardown.ProfileOrder))
+		for i, p := range m.Teardown.ProfileOrder {
+			profiles[len(m.Teardown.ProfileOrder)-1-i] = p
+		}
+	}
+	if profiles == nil {
+		profiles = []string{}
+	}
+	st.Profiles = profiles
+
+	composeStacks := m.Startup.ComposeStacks
+	if len(composeStacks) == 0 && len(m.Teardown.ComposeStacks) > 0 {
+		composeStacks = m.Teardown.ComposeStacks
+	}
+	stacks := make([]string, 0, len(composeStacks))
+	for _, s := range composeStacks {
+		if s.Path != "" {
+			stacks = append(stacks, s.Path)
+		}
+	}
+	st.Stacks = stacks
+	st.StackCount = len(composeStacks)
+
+	return st
+}
+
+func collectHooks(m *manifest.Manifest) HooksStatus {
+	st := HooksStatus{
+		PreTeardown:  []string{},
+		PostTeardown: []string{},
+		PreSleep:     []string{},
+		PostWake:     []string{},
+	}
+	if m == nil {
+		return st
+	}
+
+	st.PreTeardown = extractHookNames(m.Hooks.PreTeardown)
+	st.PostTeardown = extractHookNames(m.Hooks.PostTeardown)
+	st.PreSleep = extractHookNames(m.Hooks.PreSleep)
+	st.PostWake = extractHookNames(m.Hooks.PostWake)
+
+	return st
+}
+
+func extractHookNames(hooks []manifest.HookConfig) []string {
+	names := make([]string, 0, len(hooks))
+	for _, h := range hooks {
+		name := strings.TrimSpace(h.Name)
+		if name == "" {
+			name = strings.TrimSpace(h.Command)
+		}
+		if name != "" {
+			names = append(names, name)
+		}
+	}
+	return names
 }
