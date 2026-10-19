@@ -29,14 +29,17 @@ A complete architectural blueprint and technical specification for **Arkon**, de
 - [[10] State File Corruption Resilience & Recovery](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/10-state-file-corruption-resilience.md)
 - [[11] Spec Reconciliation & Daytime Window Configuration](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/11-spec-reconciliation-and-daytime-window-configuration.md)
 - [[12] Test Coverage Hardening & Binary-Level Exit Code Contracts](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/12-test-coverage-hardening-and-binary-contracts.md)
+- [[13] Debug and Verbose Diagnostics](file:///home/adrian/adrian-dev/arkon/.scratch/arkon/issues/13-debug-and-verbose-diagnostics.md)
 
 ## Not yet specified
 
+- **Pluggable Workload Providers (Podman, K8s, systemd slices)**: Extend the workload teardown abstraction beyond Docker Compose to support rootless Podman compose pods, local single-node Kubernetes clusters (e.g., k3s / kubelet drain), and systemd scope/slice units.
 - **Automated Update & Binary Distribution**: Packaging Arkon as Debian packages (`.deb`) and standalone GitHub release binaries via GoReleaser.
 - **Healthcheck & Boot Diagnostics**: Post-boot verification commands testing network connectivity and container health before marking the circadian wake cycle successful.
 
 ## Out of scope
 
 - Heavy persistent web UI or background HTTP daemon (monitoring is handled by Beszel).
-- Cloud orchestration, multi-node clustering, or Kubernetes integration (Arkon is single-node/homelab-first).
+- Multi-node clustering or distributed cluster orchestration (Arkon is single-node and homelab-first).
 - Direct block-level filesystem formatting or volume partitioning.
+
