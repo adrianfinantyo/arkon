@@ -1,0 +1,49 @@
+version: 2
+
+project_name: arkon
+
+builds:
+  - id: arkon
+    main: ./cmd/arkon
+    binary: arkon
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
+
+archives:
+  - id: arkon
+    formats:
+      - tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+
+nfpms:
+  - id: arkon-deb
+    package_name: arkon
+    file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats:
+      - deb
+    vendor: Adrian Finantyo
+    homepage: https://github.com/adrianfinantyo/arkon
+    maintainer: Adrian Finantyo <adrianfinantyo@gmail.com>
+    description: Declarative host power lifecycle and workload teardown orchestrator
+    license: MIT
+    bindir: /usr/local/bin
+
+checksum:
+  name_template: 'checksums.txt'
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
