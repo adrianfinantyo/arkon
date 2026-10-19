@@ -104,7 +104,7 @@ static ssize_t wakealarm_store(struct device *dev, struct device_attribute *attr
 }
 ```
 
-#### Crucial Insights from Kernel Source:
+#### Key Insights from Kernel Source:
 1. **The `-EBUSY` Overwrite Trap:** If an alarm is already enabled (`alm.enabled == 1`), writing any new timestamp without `+=\n` returns `-EBUSY` (`Device or resource busy`). To safely program a new alarm, **userspace must write `0\n` first** to execute the `alm.enabled = 0` branch, clearing the hardware interrupt state.
 2. **Linear Relative Arithmetic:** When `adjust == 1` (`+` prefix), `alarm = now + offset`. `now` is derived directly from `rtc_read_time()` on the physical hardware registers. Thus, relative offsets operate strictly on the RTC crystal's local frame of reference.
 
@@ -186,7 +186,7 @@ When scheduling wake alarms across a DST boundary (e.g., falling back from 02:00
   targetTime := time.Date(year, month, day, targetHour, targetMin, 0, 0, time.Local)
   deltaSeconds := int64(time.Until(targetTime).Seconds())
   ```
-- Because Go's `time.Date(..., time.Local)` utilizes the host's IANA timezone database (`tzdata`), `time.Until()` computes the exact physical duration across the spring-forward (-1h) or fall-back (+1h) shift.
+- Because Go's `time.Date(..., time.Local)` uses the host's IANA timezone database (`tzdata`), `time.Until()` computes the exact physical duration across the spring-forward (-1h) or fall-back (+1h) shift.
 - Passing `+deltaSeconds` ensures the hardware RTC wakes up at the correct physical moment.
 
 ### 4.4 Status Query Deserialization (`arkon status`)

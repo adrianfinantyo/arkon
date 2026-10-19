@@ -109,7 +109,7 @@ func main() {
 }
 
 func printUsage() {
-	fmt.Printf(`%s%sArkon%s %sv0.1.0-dev%s — Host Power Lifecycle & Docker Orchestrator
+	fmt.Printf(`%s%sArkon%s %sv0.1.0-dev%s: Host Power Lifecycle & Docker Orchestrator
 
 %sUSAGE:%s
   arkon <command> [flags]
